@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AgentMode, ChatMessage, ToolCall, StreamChunk } from '@shared/types'
+import { AVAILABLE_MODELS, type AgentMode, type ChatMessage, type ToolCall, type StreamChunk } from '@shared/types'
+import gemmaLogoUrl from '../assets/gemma-logo.png'
 import Composer from './Composer'
 import Message from './Message'
 import Sidebar from './Sidebar'
@@ -7,6 +8,7 @@ import Canvas from './Canvas'
 
 interface Props {
   model: string
+  onSwitchModel: (model: string) => void
 }
 
 interface Conversation {
@@ -54,7 +56,7 @@ function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-export default function Chat({ model }: Props) {
+export default function Chat({ model, onSwitchModel }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
     const loaded = loadConversations()
     return loaded.length ? loaded : [newConversation()]
@@ -242,6 +244,7 @@ export default function Chat({ model }: Props) {
             canvasOpen={!!activeConversation.canvasOpen}
             onToggleMode={toggleMode}
             onToggleCanvas={toggleCanvas}
+            onSwitchModel={onSwitchModel}
           />
           <MessageList
             messages={activeConversation.messages}
@@ -263,7 +266,7 @@ export default function Chat({ model }: Props) {
           />
         </div>
         {canvasVisible && (
-          <div className="w-[44%] min-w-[360px] max-w-[780px] shrink-0">
+          <div className="anim-slide-right w-[44%] min-w-[360px] max-w-[780px] shrink-0">
             <Canvas
               conversationId={activeId}
               streaming={streaming}
@@ -281,17 +284,36 @@ function Header({
   mode,
   canvasOpen,
   onToggleMode,
-  onToggleCanvas
+  onToggleCanvas,
+  onSwitchModel
 }: {
   model: string
   mode: AgentMode
   canvasOpen: boolean
   onToggleMode: () => void
   onToggleCanvas: () => void
+  onSwitchModel: (model: string) => void
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!pickerOpen) return
+    function handleClick(e: MouseEvent): void {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [pickerOpen])
+
+  const currentLabel = AVAILABLE_MODELS.find((m) => m.name === model)?.label ?? model
+
   return (
     <div className="drag flex h-11 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
-      <div className="w-36" />
+      <div className="min-w-[8rem]" />
       <div className="no-drag flex items-center gap-1 rounded-lg bg-white/[0.04] p-0.5 text-[12px]">
         <ModePill active={mode === 'chat'} onClick={() => mode === 'code' && onToggleMode()}>
           Chat
@@ -300,11 +322,57 @@ function Header({
           Build
         </ModePill>
       </div>
-      <div className="no-drag flex w-36 items-center justify-end gap-2">
-        <span className="flex items-center gap-1.5 text-[11.5px] text-ink-400">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          {model}
-        </span>
+      <div className="no-drag flex shrink-0 items-center justify-end gap-2">
+        <div className="relative" ref={pickerRef}>
+          <button
+            onClick={() => setPickerOpen((o) => !o)}
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11.5px] text-ink-400 transition-all duration-200 hover:bg-white/[0.05] hover:text-ink-100"
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            {currentLabel}
+            <svg viewBox="0 0 16 16" className={`h-3 w-3 transition-transform duration-200 ${pickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {pickerOpen && (
+            <div className="anim-fade-scale absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-1.5 shadow-2xl backdrop-blur-xl">
+              <div className="mb-1 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-ink-400">
+                Switch model
+              </div>
+              {AVAILABLE_MODELS.map((m) => (
+                <button
+                  key={m.name}
+                  onClick={() => {
+                    setPickerOpen(false)
+                    if (m.name !== model) onSwitchModel(m.name)
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition-all duration-150 ${
+                    m.name === model
+                      ? 'bg-white/[0.07] text-white'
+                      : 'text-ink-200 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-1.5 text-[12.5px] font-medium">
+                      {m.label}
+                      {m.recommended && (
+                        <span className="rounded-full bg-white/10 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-ink-200">
+                          rec
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-ink-400">{m.size}</div>
+                  </div>
+                  {m.name === model && (
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {mode === 'code' && (
           <button
             onClick={onToggleCanvas}
@@ -336,8 +404,8 @@ function ModePill({
   return (
     <button
       onClick={onClick}
-      className={`rounded-md px-3 py-1 font-medium transition ${
-        active ? 'bg-white/10 text-white shadow-sm' : 'text-ink-400 hover:text-ink-100'
+      className={`rounded-md px-3 py-1 font-medium transition-all duration-200 ease-out ${
+        active ? 'bg-white/10 text-white shadow-sm scale-[1.02]' : 'text-ink-400 hover:text-ink-100 scale-100'
       }`}
     >
       {children}
@@ -384,17 +452,18 @@ function MessageList({
       ) : (
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-10">
           {messages.map((m, i) => (
-            <Message
-              key={m.id}
-              message={m}
-              isLast={i === messages.length - 1}
-              streaming={streaming && i === messages.length - 1}
-              onRegenerate={
-                !streaming && m.role === 'assistant' && i === messages.length - 1
-                  ? onRegenerate
-                  : undefined
-              }
-            />
+            <div key={m.id} className="anim-float-in" style={{ animationDelay: `${Math.min(i * 30, 150)}ms` }}>
+              <Message
+                message={m}
+                isLast={i === messages.length - 1}
+                streaming={streaming && i === messages.length - 1}
+                onRegenerate={
+                  !streaming && m.role === 'assistant' && i === messages.length - 1
+                    ? onRegenerate
+                    : undefined
+                }
+              />
+            </div>
           ))}
         </div>
       )}
@@ -429,8 +498,9 @@ function EmptyState({ mode }: { mode: AgentMode }) {
   ]
   const suggestions = mode === 'code' ? codeSuggestions : chatSuggestions
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8">
-      <div className="mb-12 text-center">
+    <div className="anim-fade-in flex h-full flex-col items-center justify-center px-8">
+      <div className="anim-fade-up mb-12 text-center">
+        <img src={gemmaLogoUrl} alt="Gemma" className="mx-auto mb-6 h-20 w-20" draggable={false} />
         <div className="mb-3 text-[32px] font-semibold tracking-tight text-white">
           {mode === 'code' ? 'What should we build?' : 'How can I help?'}
         </div>
@@ -440,7 +510,7 @@ function EmptyState({ mode }: { mode: AgentMode }) {
             : 'Running locally. Your messages never leave your Mac.'}
         </div>
       </div>
-      <div className="grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="anim-stagger grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
         {suggestions.map((s) => (
           <button
             key={s.title}
@@ -456,7 +526,7 @@ function EmptyState({ mode }: { mode: AgentMode }) {
                 ta.focus()
               }
             }}
-            className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-left transition hover:border-white/10 hover:bg-white/[0.04]"
+            className="anim-fade-up rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-left transition hover:border-white/10 hover:bg-white/[0.04] active:scale-[0.98]"
           >
             <div className="text-sm font-medium text-white">{s.title}</div>
             <div className="mt-0.5 text-[12.5px] text-ink-400">{s.prompt}</div>

@@ -38,7 +38,7 @@ export default function Sidebar({
           <div key={c.id} className="group relative">
             <button
               onClick={() => onSelect(c.id)}
-              className={`w-full truncate rounded-lg px-3 py-2 text-left text-[13px] transition ${
+              className={`w-full truncate rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-200 ease-out ${
                 activeId === c.id
                   ? 'bg-white/[0.07] text-white'
                   : 'text-ink-200 hover:bg-white/[0.03]'

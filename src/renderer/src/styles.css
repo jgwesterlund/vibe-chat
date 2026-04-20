@@ -208,3 +208,98 @@ textarea,
   animation: caret-blink 1s steps(2) infinite;
   color: #888;
 }
+
+/* ── Page & view transitions ── */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Utility classes */
+.anim-fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
+
+.anim-fade-up {
+  animation: fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-fade-scale {
+  animation: fade-scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-slide-right {
+  animation: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-slide-left {
+  animation: slide-in-left 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-float-in {
+  animation: float-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Staggered children — applies incremental delay */
+.anim-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.anim-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.anim-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.anim-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.anim-stagger > *:nth-child(5) { animation-delay: 160ms; }
+.anim-stagger > *:nth-child(6) { animation-delay: 200ms; }

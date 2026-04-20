@@ -1,7 +1,7 @@
 export type SetupStage =
   | 'checking'
-  | 'installing-ollama'
-  | 'starting-ollama'
+  | 'installing-mlx'
+  | 'starting-mlx'
   | 'downloading-model'
   | 'ready'
   | 'error'
@@ -78,7 +78,10 @@ export type StreamChunk =
   | { type: 'error'; error: string }
 
 export interface ModelInfo {
+  /** HuggingFace repo ID — used internally for mlx_lm */
   name: string
+  /** Short, user-friendly display name */
+  label: string
   size: string
   sizeBytes: number
   description: string
@@ -87,30 +90,35 @@ export interface ModelInfo {
 
 export const AVAILABLE_MODELS: ModelInfo[] = [
   {
-    name: 'gemma4:e2b',
-    size: '7.2 GB',
-    sizeBytes: 7_200_000_000,
-    description: 'Edge-sized. 128K context. Text + image + audio. Runs on 8GB+ Macs.'
+    name: 'mlx-community/gemma-4-e2b-it-4bit',
+    label: 'Gemma 4 E2B',
+    size: '1.5 GB',
+    sizeBytes: 1_500_000_000,
+    description: 'Edge-sized. Fast & lightweight. Text + image + audio. Runs on 8GB+ Macs.'
   },
   {
-    name: 'gemma4:e4b',
-    size: '9.6 GB',
-    sizeBytes: 9_600_000_000,
-    description: 'Best all-rounder. 128K context. Text + image + audio. 16GB+ Macs.',
+    name: 'mlx-community/gemma-4-e4b-it-4bit',
+    label: 'Gemma 4 E4B',
+    size: '3 GB',
+    sizeBytes: 3_000_000_000,
+    description: 'Best all-rounder. Text + image + audio. Runs on 8GB+ Macs.',
     recommended: true
   },
   {
-    name: 'gemma4:26b',
-    size: '18 GB',
-    sizeBytes: 18_000_000_000,
-    description: 'Mixture-of-Experts. 256K context. Needs 32GB+ RAM.'
+    name: 'mlx-community/gemma-4-26b-a4b-it-4bit',
+    label: 'Gemma 4 27B MoE',
+    size: '16 GB',
+    sizeBytes: 16_000_000_000,
+    description: 'Mixture-of-Experts (26B, 4B active). 16GB+ RAM recommended.'
   },
   {
-    name: 'gemma4:31b',
-    size: '20 GB',
-    sizeBytes: 20_000_000_000,
-    description: 'Frontier dense. 256K context. Needs 32GB+ RAM.'
+    name: 'mlx-community/gemma-4-31b-it-4bit',
+    label: 'Gemma 4 31B',
+    size: '18 GB',
+    sizeBytes: 18_000_000_000,
+    description: 'Frontier dense model. Best quality. 32GB+ RAM recommended.'
   }
 ]
 
-export const DEFAULT_MODEL = 'gemma4:e4b'
+export const DEFAULT_MODEL = 'mlx-community/gemma-4-e4b-it-4bit'
+

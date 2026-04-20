@@ -10,7 +10,9 @@ import type {
 const api = {
   startSetup: (model: string): Promise<void> => ipcRenderer.invoke('setup:start', model),
 
-  checkOllama: (): Promise<{ hasOllama: boolean }> => ipcRenderer.invoke('setup:status'),
+  switchModel: (model: string): Promise<void> => ipcRenderer.invoke('model:switch', model),
+
+  checkMLX: (): Promise<{ hasMLX: boolean }> => ipcRenderer.invoke('setup:status'),
 
   onSetupStatus: (cb: (s: SetupStatus) => void): (() => void) => {
     const listener = (_: IpcRendererEvent, s: SetupStatus): void => cb(s)

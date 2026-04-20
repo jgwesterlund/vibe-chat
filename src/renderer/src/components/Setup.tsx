@@ -1,4 +1,5 @@
 import { AVAILABLE_MODELS, type SetupStatus } from '@shared/types'
+import gemmaLogoUrl from '../assets/gemma-logo.png'
 
 interface Props {
   status: SetupStatus
@@ -22,8 +23,8 @@ function formatBytes(n?: number): string {
 export default function Setup({ status, model, onModelChange, onStart }: Props) {
   const isWorking =
     status.stage === 'checking' ||
-    status.stage === 'installing-ollama' ||
-    status.stage === 'starting-ollama' ||
+    status.stage === 'installing-mlx' ||
+    status.stage === 'starting-mlx' ||
     status.stage === 'downloading-model'
 
   if (status.stage === 'checking' && status.message === 'Welcome') {
@@ -36,7 +37,7 @@ export default function Setup({ status, model, onModelChange, onStart }: Props) 
       <div className="flex flex-1 items-center justify-center px-8">
         <div className="no-drag w-full max-w-md">
           <div className="mb-8 text-center">
-            <GemmaLogo className="mx-auto mb-5 h-14 w-14" />
+            <GemmaLogo className="mx-auto mb-5 h-20 w-20" />
             <h1 className="text-[22px] font-semibold tracking-tight">Setting things up</h1>
             <p className="mt-1.5 text-sm text-ink-400">
               Everything runs locally. Nothing leaves your Mac.
@@ -97,8 +98,8 @@ function WelcomeScreen({
       <div className="h-9" />
       <div className="flex flex-1 items-center justify-center px-8">
         <div className="no-drag w-full max-w-md">
-          <div className="mb-8 text-center">
-            <GemmaLogo className="mx-auto mb-5 h-16 w-16" />
+          <div className="anim-fade-up mb-8 text-center">
+            <GemmaLogo className="mx-auto mb-5 h-24 w-24" />
             <h1 className="text-[26px] font-semibold tracking-tight">Welcome to Gemma Chat</h1>
             <p className="mt-2 text-[13.5px] leading-relaxed text-ink-400">
               A local AI assistant, powered by Google's Gemma 4.
@@ -110,12 +111,12 @@ function WelcomeScreen({
           <div className="mb-3 text-[11px] font-medium uppercase tracking-wider text-ink-400">
             Pick a model
           </div>
-          <div className="space-y-2">
+          <div className="anim-stagger space-y-2">
             {AVAILABLE_MODELS.map((m) => (
               <button
                 key={m.name}
                 onClick={() => onModelChange(m.name)}
-                className={`group relative w-full rounded-xl border px-4 py-3 text-left transition ${
+                className={`anim-fade-up group relative w-full rounded-xl border px-4 py-3 text-left transition active:scale-[0.99] ${
                   model === m.name
                     ? 'border-white/25 bg-white/[0.06]'
                     : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]'
@@ -123,7 +124,7 @@ function WelcomeScreen({
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{m.name}</span>
+                    <span className="font-medium">{m.label}</span>
                     {m.recommended && (
                       <span className="rounded-full bg-white/10 px-2 py-[1px] text-[10px] font-medium uppercase tracking-wider text-ink-100">
                         Recommended
@@ -143,10 +144,10 @@ function WelcomeScreen({
             onClick={() => onStart(selected.name)}
             className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-medium text-ink-900 transition hover:bg-white/90 active:scale-[0.99]"
           >
-            Download {selected.name} &nbsp;·&nbsp; {selected.size}
+            Download {selected.label} &nbsp;·&nbsp; {selected.size}
           </button>
           <p className="mt-3 text-center text-[11px] text-ink-400">
-            We'll also install the local model runtime (~180 MB) if needed.
+            We'll install MLX runtime if needed. Model weights are cached locally.
           </p>
         </div>
       </div>
@@ -156,15 +157,15 @@ function WelcomeScreen({
 
 function StageList({ status }: { status: SetupStatus }) {
   const stages: Array<{ key: SetupStatus['stage']; label: string }> = [
-    { key: 'installing-ollama', label: 'Install local runtime' },
-    { key: 'starting-ollama', label: 'Start runtime' },
+    { key: 'installing-mlx', label: 'Install MLX runtime' },
+    { key: 'starting-mlx', label: 'Start runtime & load model' },
     { key: 'downloading-model', label: 'Download model' },
     { key: 'ready', label: 'Ready to chat' }
   ]
   const order: SetupStatus['stage'][] = [
     'checking',
-    'installing-ollama',
-    'starting-ollama',
+    'installing-mlx',
+    'starting-mlx',
     'downloading-model',
     'ready'
   ]
@@ -221,24 +222,11 @@ function StageDot({ state }: { state: 'pending' | 'active' | 'done' }) {
 
 function GemmaLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 64 64" className={className} fill="none">
-      <defs>
-        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#7aa2f7" />
-          <stop offset="50%" stopColor="#bb9af7" />
-          <stop offset="100%" stopColor="#f7768e" />
-        </linearGradient>
-      </defs>
-      <circle cx="32" cy="32" r="30" fill="url(#g1)" opacity="0.15" />
-      <circle cx="32" cy="32" r="30" stroke="url(#g1)" strokeWidth="1.5" />
-      <path
-        d="M32 14 L46 22 V42 L32 50 L18 42 V22 Z"
-        stroke="url(#g1)"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-        fill="rgba(255,255,255,0.03)"
-      />
-      <circle cx="32" cy="32" r="5" fill="url(#g1)" />
-    </svg>
+    <img
+      src={gemmaLogoUrl}
+      alt="Gemma"
+      className={className}
+      draggable={false}
+    />
   )
 }

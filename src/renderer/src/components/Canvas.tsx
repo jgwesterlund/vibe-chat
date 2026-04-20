@@ -146,7 +146,7 @@ export default function Canvas({ conversationId, streaming, onClose }: Props) {
 
       <div className="min-h-0 flex-1">
         {tab === 'preview' && (
-          <div className="relative h-full w-full">
+          <div key="preview" className="anim-fade-in relative h-full w-full">
             {previewSrc ? (
               <iframe
                 ref={iframeRef}
@@ -173,17 +173,19 @@ export default function Canvas({ conversationId, streaming, onClose }: Props) {
           </div>
         )}
 
-        {tab === 'code' && <CodeView live={liveFile} />}
+        {tab === 'code' && <div key="code" className="anim-fade-in h-full"><CodeView live={liveFile} /></div>}
 
         {tab === 'files' && (
-          <FileList
-            files={files}
-            onOpen={(path) => {
-              setSelectedFile(path)
-              setTab('preview')
-              setNonce((n) => n + 1)
-            }}
-          />
+          <div key="files" className="anim-fade-in h-full">
+            <FileList
+              files={files}
+              onOpen={(path) => {
+                setSelectedFile(path)
+                setTab('preview')
+                setNonce((n) => n + 1)
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

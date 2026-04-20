@@ -1,17 +1,17 @@
-import { app, shell, BrowserWindow, ipcMain, nativeTheme, session } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, nativeTheme, session, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { AVAILABLE_MODELS } from '@shared/types'
 import {
-  locateOllama,
-  installOllama,
+  locateMLX,
+  installMLX,
   startServer,
   stopServer,
   hasModel,
-  pullModel,
   chatStream,
   listLocalModels,
-  type OllamaChatMessage
-} from './ollama'
+  type MLXChatMessage
+} from './mlx'
 import {
   TOOLS,
   chatSystemPrompt,
@@ -49,6 +49,7 @@ function createWindow(): void {
     trafficLightPosition: { x: 14, y: 14 },
     vibrancy: 'under-window',
     visualEffectState: 'active',
+    icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -80,59 +81,54 @@ function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload)
 }
 
-async function ensureServerRunning(): Promise<string> {
-  let bin = await locateOllama()
-  if (!bin) {
+let mlxPython: string | null = null
+
+async function ensureMLXRunning(model: string): Promise<string> {
+  let mlx = locateMLX()
+  if (!mlx) {
+    throw new Error(
+      'Python 3.10–3.13 not found. Install via Homebrew: brew install python@3.13'
+    )
+  }
+
+  let pythonToUse = mlx.python
+
+  if (!mlx.installed) {
     send('setup:status', {
-      stage: 'installing-ollama',
-      message: 'Preparing runtime…'
+      stage: 'installing-mlx',
+      message: 'Installing MLX runtime…'
     })
-    bin = await installOllama((p) => {
+    // installMLX creates the venv and returns the venv python path
+    pythonToUse = await installMLX((p) => {
       send('setup:status', {
-        stage: 'installing-ollama',
-        message: p.message,
-        bytesDone: p.bytesDone,
-        bytesTotal: p.bytesTotal,
-        progress:
-          p.bytesDone && p.bytesTotal ? Math.min(1, p.bytesDone / p.bytesTotal) : undefined
+        stage: 'installing-mlx',
+        message: p.message
       })
     })
   }
-  send('setup:status', { stage: 'starting-ollama', message: 'Starting model runtime…' })
-  await startServer(bin)
-  return bin
-}
 
-async function ensureModel(model: string): Promise<void> {
-  if (await hasModel(model)) return
+  mlxPython = pythonToUse
+
+  const label = AVAILABLE_MODELS.find((m) => m.name === model)?.label ?? model
+  send('setup:status', { stage: 'starting-mlx', message: 'Starting model runtime…' })
   send('setup:status', {
     stage: 'downloading-model',
-    message: `Downloading ${model}…`,
-    progress: 0
+    message: `Loading ${label}… (first run downloads the model)`
   })
-  for await (const p of pullModel(model)) {
-    if (p.total && p.completed) {
-      send('setup:status', {
-        stage: 'downloading-model',
-        message: p.status || `Downloading ${model}…`,
-        bytesDone: p.completed,
-        bytesTotal: p.total,
-        progress: p.completed / p.total
-      })
-    } else if (p.status) {
-      send('setup:status', {
-        stage: 'downloading-model',
-        message: `${p.status}…`
-      })
-    }
-  }
+  await startServer(pythonToUse, model, (p) => {
+    send('setup:status', {
+      stage: 'downloading-model',
+      message: p.message,
+      progress: p.progress
+    })
+  })
+  return pythonToUse
 }
 
 async function handleSetup(model: string): Promise<void> {
   try {
     send('setup:status', { stage: 'checking', message: 'Checking system…' })
-    await ensureServerRunning()
-    await ensureModel(model)
+    await ensureMLXRunning(model)
     send('setup:status', { stage: 'ready', message: 'Ready to chat.' })
   } catch (e) {
     send('setup:status', {
@@ -162,7 +158,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
   const emit = (chunk: StreamChunk): void => send(channel, chunk)
 
   try {
-    const baseMessages: OllamaChatMessage[] = []
+    const baseMessages: MLXChatMessage[] = []
 
     if (req.mode === 'code') {
       const wsPath = await ensureWorkspace(req.conversationId)
@@ -173,7 +169,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     }
 
     for (const m of req.messages) {
-      baseMessages.push({ role: m.role as OllamaChatMessage['role'], content: m.content })
+      baseMessages.push({ role: m.role as MLXChatMessage['role'], content: m.content })
       if (m.toolCalls) {
         for (const tc of m.toolCalls) {
           if (tc.result != null) {
@@ -400,7 +396,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
             liveContentStart = -1
             lastEmittedContent = ''
             emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
-            // Break out of the current Ollama stream — we need to start a new
+            // Break out of the current stream — we need to start a new
             // request with the updated conversation including the tool result.
             break streamLoop
           }
@@ -439,6 +435,12 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.ammaar.gemmachat')
   nativeTheme.themeSource = 'dark'
 
+  // Set dock icon (macOS) — ensures the Gemma icon shows in dev mode
+  if (process.platform === 'darwin' && app.dock) {
+    const dockIcon = nativeImage.createFromPath(join(__dirname, '../../build/icon.png'))
+    if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon)
+  }
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -458,9 +460,37 @@ app.whenReady().then(async () => {
     await handleSetup(model)
   })
 
+  ipcMain.handle('model:switch', async (_e, model: string) => {
+    const label = AVAILABLE_MODELS.find((m) => m.name === model)?.label ?? model
+    send('setup:status', {
+      stage: 'downloading-model',
+      message: `Switching to ${label}…`
+    })
+    try {
+      await stopServer()
+      if (!mlxPython) {
+        throw new Error('MLX Python path not available. Please restart the app.')
+      }
+      await startServer(mlxPython, model, (p) => {
+        send('setup:status', {
+          stage: 'downloading-model',
+          message: p.message,
+          progress: p.progress
+        })
+      })
+      send('setup:status', { stage: 'ready', message: 'Ready to chat.' })
+    } catch (e) {
+      send('setup:status', {
+        stage: 'error',
+        message: 'Model switch failed',
+        error: (e as Error).message
+      })
+    }
+  })
+
   ipcMain.handle('setup:status', async () => {
-    const bin = await locateOllama()
-    return { hasOllama: !!bin }
+    const mlx = locateMLX()
+    return { hasMLX: !!(mlx && mlx.installed) }
   })
 
   ipcMain.handle('models:list-local', async () => {
@@ -509,41 +539,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'audio:transcribe',
-    async (_e, { base64, model }: { base64: string; model: string }) => {
-      // Ollama multimodal chat: try `audios` field, fall back to `images`
-      async function tryField(field: 'audios' | 'images'): Promise<string | null> {
-        try {
-          const res = await fetch('http://127.0.0.1:11434/api/chat', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              model,
-              stream: false,
-              messages: [
-                {
-                  role: 'user',
-                  content:
-                    'Transcribe this audio verbatim. Reply with ONLY the transcribed text, no preamble or quotation marks.',
-                  [field]: [base64]
-                }
-              ]
-            })
-          })
-          if (!res.ok) return null
-          const data = (await res.json()) as { message?: { content?: string } }
-          const text = data.message?.content?.trim() ?? ''
-          if (!text) return null
-          // Heuristic: if model replied with something like "I can't process audio", treat as failure
-          if (/can(not|'t)\s+(process|hear|transcribe|handle)|no audio|not (a|an) audio/i.test(text)) {
-            return null
-          }
-          return text
-        } catch {
-          return null
-        }
-      }
-      const text = (await tryField('audios')) ?? (await tryField('images'))
-      return { text: text ?? '' }
+    async (_e, { base64: _base64, model: _model }: { base64: string; model: string }) => {
+      // Audio transcription via MLX is not yet supported
+      // Return empty text so the UI doesn't break
+      return { text: '' }
     }
   )
 
@@ -556,7 +555,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   // On macOS, keep the app alive in the dock so reopening is instant and the
-  // Ollama subprocess + workspace server stay warm. Only non-darwin platforms
+  // MLX subprocess + workspace server stay warm. Only non-darwin platforms
   // quit on last-window-close.
   if (process.platform !== 'darwin') {
     app.quit()

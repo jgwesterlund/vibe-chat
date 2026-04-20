@@ -12,6 +12,7 @@ files:
 asarUnpack:
   - resources/**
 mac:
+  icon: build/icon.icns
   target:
     - target: dmg
       arch: [arm64]
