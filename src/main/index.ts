@@ -407,6 +407,22 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
       }
 
       if (!executedAction) {
+        // In Build mode, if the model just described a plan without writing code,
+        // nudge it to start coding immediately instead of ending the turn.
+        if (req.mode === 'code' && round === 0 && buffer.trim().length > 0) {
+          // Flush the plan text to the UI
+          if (emittedIdx < buffer.length) {
+            emit({ type: 'token', text: buffer.slice(emittedIdx) })
+          }
+          baseMessages.push({ role: 'assistant', content: buffer })
+          baseMessages.push({
+            role: 'user',
+            content:
+              'Good plan. Now start building — emit a write_file action with the first file immediately.'
+          })
+          emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
+          continue // go to round 1
+        }
         emit({ type: 'activity', activity: { kind: 'idle' } })
         emit({ type: 'done' })
         return
