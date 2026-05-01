@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { marked } from 'marked'
 import type { AgentActivity, ChatMessage, ToolCall } from '@shared/types'
-import vibeLogoUrl from '../assets/vibe-logo.png'
+import BrandMark from './BrandMark'
 
 interface Props {
   message: ChatMessage
@@ -51,7 +51,7 @@ export default function Message({
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="selectable max-w-[78%] rounded-2xl rounded-br-md bg-user px-4 py-2.5 text-[14.5px] leading-relaxed text-user-fg shadow-sm shadow-shadow/10">
+        <div className="selectable max-w-[74%] rounded-xl rounded-br-sm bg-user px-4 py-2.5 text-[14.5px] leading-relaxed text-user-fg shadow-sm shadow-shadow/10">
           <div className="whitespace-pre-wrap">{message.content}</div>
         </div>
       </div>
@@ -65,7 +65,7 @@ export default function Message({
 
   return (
     <div className="group flex gap-3">
-      <img src={vibeLogoUrl} alt="Vibe Chat" className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover" />
+      <BrandMark className="mt-0.5 h-7 w-7 shrink-0" />
       <div className="selectable min-w-0 flex-1">
         {parsed.thinking && (
           <ThinkingBlock content={parsed.thinking} inProgress={parsed.thinkingInProgress} />
@@ -320,14 +320,14 @@ function ToolCallView({ call }: { call: ToolCall }) {
   const { verb, target } = toolLabel(call)
   const ico = toolIcon(call.name)
   return (
-    <div className="mb-2 overflow-hidden rounded-lg border border-line bg-panel">
+    <div className="mb-2 overflow-hidden rounded-lg border border-white/10 bg-code shadow-[0_1px_3px_rgba(20,20,19,0.08)]">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-fg hover:bg-panel-strong"
+        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[rgb(var(--color-on-dark))] hover:bg-white/[0.04]"
       >
         <span className="flex h-5 w-5 shrink-0 items-center justify-center font-mono text-[13px]">
           {running ? (
-            <svg className="h-3.5 w-3.5 animate-spin text-muted" viewBox="0 0 24 24" fill="none">
+            <svg className="h-3.5 w-3.5 animate-spin text-[rgb(var(--color-on-dark-soft))]" viewBox="0 0 24 24" fill="none">
               <circle
                 cx="12"
                 cy="12"
@@ -344,36 +344,36 @@ function ToolCallView({ call }: { call: ToolCall }) {
           )}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span className={running ? 'shimmer-text' : 'text-fg'}>
+          <span className={running ? 'shimmer-text' : 'text-[rgb(var(--color-on-dark))]'}>
             {running ? `${verb}…` : verb}
           </span>
           {target && (
-            <span className="truncate font-mono text-[11.5px] text-muted">{target}</span>
+            <span className="truncate font-mono text-[11.5px] text-[rgb(var(--color-on-dark-soft))]">{target}</span>
           )}
         </span>
         <svg
           viewBox="0 0 12 12"
-          className={`h-2.5 w-2.5 shrink-0 text-muted transition ${open ? 'rotate-90' : ''}`}
+          className={`h-2.5 w-2.5 shrink-0 text-[rgb(var(--color-on-dark-soft))] transition ${open ? 'rotate-90' : ''}`}
           fill="currentColor"
         >
           <path d="M4 2l4 4-4 4V2z" />
         </svg>
       </button>
       {open && (
-        <div className="border-t border-line px-3 py-2 font-mono text-[11.5px] text-muted">
+        <div className="border-t border-white/10 px-3 py-2 font-mono text-[11.5px] text-[rgb(var(--color-on-dark-soft))]">
           {call.name === 'write_file' && typeof call.args.content === 'string' ? (
-            <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap break-words text-ink-200">
+            <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap break-words text-[rgb(var(--color-on-dark))]">
               {String(call.args.content).slice(0, 4000)}
               {String(call.args.content).length > 4000 ? '\n…' : ''}
             </pre>
           ) : (
-            <div className="mb-1 text-muted">
+            <div className="mb-1 text-[rgb(var(--color-on-dark-soft))]">
               args: {JSON.stringify(call.args).slice(0, 400)}
               {JSON.stringify(call.args).length > 400 ? '…' : ''}
             </div>
           )}
           {call.result && (
-            <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words text-ink-200">
+            <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words text-[rgb(var(--color-on-dark))]">
               {call.result}
             </pre>
           )}

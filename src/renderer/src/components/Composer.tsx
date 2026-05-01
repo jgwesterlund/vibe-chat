@@ -140,7 +140,7 @@ export default function Composer({
   return (
     <div className="shrink-0 px-6 pb-6 pt-2">
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-end gap-2 rounded-2xl border border-line bg-panel p-2 shadow-lg shadow-shadow/20 focus-within:border-sidebar-active">
+        <div className="flex items-end gap-2 rounded-xl border border-line bg-surface p-2 shadow-[0_1px_3px_rgba(20,20,19,0.08)] transition focus-within:border-action/70 focus-within:ring-[3px] focus-within:ring-action/15">
           <MicButton
             state={recState}
             seconds={recordSeconds}
@@ -168,7 +168,7 @@ export default function Composer({
             <button
               onClick={onStop}
               aria-label="Stop"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-action text-action-fg transition hover:opacity-90"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-action text-action-fg transition hover:bg-[rgb(var(--color-primary-active))]"
             >
               <svg viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor">
                 <rect x="2" y="2" width="8" height="8" rx="1" />
@@ -179,7 +179,7 @@ export default function Composer({
               onClick={submit}
               disabled={!canSend}
               aria-label="Send"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-action text-action-fg transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-control disabled:text-faint"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-action text-action-fg transition hover:bg-[rgb(var(--color-primary-active))] disabled:cursor-not-allowed disabled:bg-control disabled:text-faint"
             >
               <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor">
                 <path d="M2 8l12-6-4 14-2-6-6-2z" />
@@ -226,7 +226,7 @@ function MicButton({
     return (
       <button
         onClick={onClick}
-        className="flex h-9 items-center gap-1.5 rounded-xl bg-danger px-3 text-[11.5px] font-medium text-white transition hover:opacity-90"
+        className="flex h-9 items-center gap-1.5 rounded-lg bg-danger px-3 text-[11.5px] font-medium text-white transition hover:opacity-90"
         aria-label="Stop recording"
       >
         <span className="flex h-2 w-2 items-center justify-center">
@@ -238,7 +238,7 @@ function MicButton({
   }
   if (state === 'transcribing' || state === 'loading-model') {
     return (
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-control">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-control">
         <svg className="h-4 w-4 animate-spin text-ink-200" viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 100" />
         </svg>
@@ -251,7 +251,7 @@ function MicButton({
       disabled={disabled}
       title="Voice input"
       aria-label="Record voice"
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-control hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-control hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
     >
       <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor">
         <path d="M8 2a2 2 0 0 0-2 2v5a2 2 0 0 0 4 0V4a2 2 0 0 0-2-2z" />

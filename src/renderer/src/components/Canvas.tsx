@@ -92,9 +92,9 @@ export default function Canvas({ conversationId, streaming, onClose }: Props) {
   const fileCount = files.filter((f) => f.kind === 'file').length
 
   return (
-    <div className="flex h-full w-full flex-col border-l border-line bg-surface">
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
-        <div className="flex rounded-md bg-control p-0.5">
+    <div className="flex h-full w-full flex-col border-l border-white/10 bg-code text-[rgb(var(--color-on-dark))]">
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-white/10 px-3">
+        <div className="flex rounded-md bg-white/[0.06] p-0.5">
           <TabButton label="Preview" active={tab === 'preview'} onClick={() => setTab('preview')} />
           <TabButton
             label={
@@ -116,7 +116,7 @@ export default function Canvas({ conversationId, streaming, onClose }: Props) {
         </div>
         <div className="flex-1" />
         {streaming && (
-          <span className="flex items-center gap-1.5 rounded-md bg-control px-2 py-1 text-[11px] text-ink-200">
+          <span className="flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2 py-1 text-[11px] text-[rgb(var(--color-on-dark))]">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inset-0 animate-ping rounded-full bg-success/60" />
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
@@ -155,7 +155,7 @@ export default function Canvas({ conversationId, streaming, onClose }: Props) {
                 title="Preview"
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted">
+              <div className="flex h-full items-center justify-center text-sm text-[rgb(var(--color-on-dark-soft))]">
                 Starting preview server…
               </div>
             )}
@@ -213,7 +213,7 @@ function CodeView({ live }: { live: LiveFile | null }) {
 
   if (!live) {
     return (
-      <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-400">
+      <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-[rgb(var(--color-on-dark-soft))]">
         Nothing streaming right now. The code tab lights up while Vibe writes a file.
       </div>
     )
@@ -221,8 +221,8 @@ function CodeView({ live }: { live: LiveFile | null }) {
   const lines = live.content.split('\n')
   const lineCount = lines.length
   return (
-    <div className="flex h-full flex-col bg-code">
-      <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2 text-[11.5px]">
+    <div className="flex h-full flex-col bg-code text-[rgb(var(--color-on-dark))]">
+      <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2 text-[11.5px]">
         <div className="flex items-center gap-2">
           {!live.done ? (
             <span className="relative flex h-1.5 w-1.5">
@@ -232,21 +232,21 @@ function CodeView({ live }: { live: LiveFile | null }) {
           ) : (
             <span className="h-1.5 w-1.5 rounded-full bg-faint" />
           )}
-          <span className="font-mono text-fg">{live.path}</span>
+          <span className="font-mono text-[rgb(var(--color-on-dark))]">{live.path}</span>
         </div>
-        <div className="tabular-nums text-muted">
+        <div className="tabular-nums text-[rgb(var(--color-on-dark-soft))]">
           {lineCount} line{lineCount === 1 ? '' : 's'} · {live.content.length.toLocaleString()} chars
           {!live.done && <span className="ml-2 shimmer-text">writing</span>}
         </div>
       </div>
       <div ref={ref} className="min-h-0 flex-1 overflow-auto">
         <div className="flex min-h-full font-mono text-[12px] leading-[1.55]">
-          <div className="sticky left-0 shrink-0 select-none border-r border-line bg-code px-3 py-3 text-right text-faint tabular-nums">
+          <div className="sticky left-0 shrink-0 select-none border-r border-white/10 bg-code px-3 py-3 text-right text-[rgb(var(--color-on-dark-soft))] tabular-nums">
             {lines.map((_, i) => (
               <div key={i}>{i + 1}</div>
             ))}
           </div>
-          <pre className="flex-1 whitespace-pre-wrap break-words px-4 py-3 text-fg">
+          <pre className="flex-1 whitespace-pre-wrap break-words px-4 py-3 text-[rgb(var(--color-on-dark))]">
             {live.content}
             {!live.done && <span className="anim-caret">▍</span>}
           </pre>
@@ -269,7 +269,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={`flex items-center rounded px-2.5 py-1 text-[11.5px] font-medium transition ${
-        active ? 'bg-sidebar-active text-white' : 'text-muted hover:text-fg'
+        active ? 'bg-action text-action-fg' : 'text-[rgb(var(--color-on-dark-soft))] hover:text-[rgb(var(--color-on-dark))]'
       }`}
     >
       {label}
@@ -290,7 +290,7 @@ function IconButton({
     <button
       title={title}
       onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-muted transition hover:bg-control hover:text-fg"
+      className="flex h-7 w-7 items-center justify-center rounded-md text-[rgb(var(--color-on-dark-soft))] transition hover:bg-white/[0.06] hover:text-[rgb(var(--color-on-dark))]"
     >
       {children}
     </button>
@@ -306,7 +306,7 @@ function FileList({
 }) {
   if (files.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-400">
+      <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-[rgb(var(--color-on-dark-soft))]">
         No files yet. Ask Vibe to build something. Files appear here as it writes them.
       </div>
     )
@@ -318,7 +318,7 @@ function FileList({
         const name = f.path.split('/').pop() || f.path
         if (f.kind === 'dir') {
           return (
-            <div key={f.path} style={{ paddingLeft: 8 + depth * 12 }} className="py-1 text-muted">
+            <div key={f.path} style={{ paddingLeft: 8 + depth * 12 }} className="py-1 text-[rgb(var(--color-on-dark-soft))]">
               <span className="mr-1">▸</span>
               {name}/
             </div>
@@ -329,11 +329,11 @@ function FileList({
             key={f.path}
             style={{ paddingLeft: 8 + depth * 12 }}
             onClick={() => onOpen(f.path)}
-            className="flex w-full items-center justify-between py-1 text-left text-fg hover:bg-control"
+            className="flex w-full items-center justify-between rounded-md py-1 text-left text-[rgb(var(--color-on-dark))] hover:bg-white/[0.06]"
           >
             <span className="truncate">{name}</span>
             {f.size != null && (
-              <span className="ml-2 shrink-0 text-[10.5px] text-muted">{formatSize(f.size)}</span>
+              <span className="ml-2 shrink-0 text-[10.5px] text-[rgb(var(--color-on-dark-soft))]">{formatSize(f.size)}</span>
             )}
           </button>
         )
