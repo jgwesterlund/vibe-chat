@@ -8,7 +8,7 @@ import {
   type ImpeccableFinding
 } from 'impeccable'
 
-export const DESIGN_GUARD_MAX_REPAIR_ROUNDS = 3
+export const DESIGN_GUARD_MAX_REPAIR_ROUNDS = 8
 
 const HTML_EXTENSIONS = new Set(['.html', '.htm'])
 const MAX_PROMPT_FINDINGS = 12
