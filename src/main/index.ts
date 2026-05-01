@@ -540,7 +540,15 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
             }
             if (found.name === 'open_preview') {
               const report = designGuardReport ?? (await scanDesignGuard())
-              if (report) queueDesignGuardRepair(report)
+              if (report?.findings.length) {
+                const repairQueued = queueDesignGuardRepair(report)
+                if (!repairQueued) {
+                  emit({ type: 'token', text: designGuardFinalWarning(report) })
+                  emit({ type: 'activity', activity: { kind: 'idle' } })
+                  emit({ type: 'done' })
+                  return
+                }
+              }
             }
             if (livePath) {
               send('file:streaming', {
