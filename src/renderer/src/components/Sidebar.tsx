@@ -63,7 +63,7 @@ export default function Sidebar({
         ))}
       </div>
       <div className="no-drag border-t border-white/15 p-3 text-[11px] text-white/70">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center">
           <div className="flex items-center gap-1.5">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-green" />
             {providerLabel === 'Local'
@@ -72,14 +72,6 @@ export default function Sidebar({
                 ? 'Ollama local'
                 : 'Pi AI provider'}
           </div>
-          <a
-            href="https://x.com/ammaar"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-white/45 transition hover:text-white/80"
-          >
-            @ammaar
-          </a>
         </div>
       </div>
     </div>
