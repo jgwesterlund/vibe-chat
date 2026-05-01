@@ -20,6 +20,10 @@ export interface LocalMlxStreamOptions extends ProviderStreamOptions {
   model: string
 }
 
+export interface LocalOllamaStreamOptions extends ProviderStreamOptions {
+  model: string
+}
+
 export interface PiAiStreamOptions extends ProviderStreamOptions {
   config: PiAiProviderConfig
   apiKey?: string
@@ -32,5 +36,8 @@ export interface RuntimeProviderDescriptor {
 }
 
 export function defaultProviderSelection(model: string): ChatProviderSelection {
+  if (model.startsWith('ollama:')) {
+    return { id: 'ollama', model }
+  }
   return { id: 'local-mlx', model }
 }

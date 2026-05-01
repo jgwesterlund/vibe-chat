@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import {
   DEFAULT_MODEL,
+  DEFAULT_OLLAMA_MODEL,
   DEFAULT_PI_AI_CONFIG,
   type AppProviderConfig,
   type PiAiProviderConfig
@@ -18,6 +19,7 @@ export function defaultProviderConfig(): AppProviderConfig {
   return {
     selectedProvider: 'local-mlx',
     localModel: DEFAULT_MODEL,
+    ollamaModel: DEFAULT_OLLAMA_MODEL,
     piAi: { ...DEFAULT_PI_AI_CONFIG }
   }
 }
@@ -43,10 +45,13 @@ export function normalizeProviderConfig(config: Partial<AppProviderConfig>): App
   const defaults = defaultProviderConfig()
   return {
     selectedProvider:
-      config.selectedProvider === 'pi-ai' || config.selectedProvider === 'local-mlx'
+      config.selectedProvider === 'pi-ai' ||
+      config.selectedProvider === 'local-mlx' ||
+      config.selectedProvider === 'ollama'
         ? config.selectedProvider
         : defaults.selectedProvider,
     localModel: config.localModel || defaults.localModel,
+    ollamaModel: config.ollamaModel || defaults.ollamaModel,
     piAi: normalizePiAiConfig(config.piAi)
   }
 }

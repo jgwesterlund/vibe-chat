@@ -1,7 +1,13 @@
 import { app, shell, BrowserWindow, ipcMain, nativeTheme, session, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { AVAILABLE_MODELS, type AppProviderConfig, type PiAiProviderConfig } from '@shared/types'
+import {
+  AVAILABLE_MODELS,
+  OLLAMA_MODEL_PREFIX,
+  runtimeModelName,
+  type AppProviderConfig,
+  type PiAiProviderConfig
+} from '@shared/types'
 import {
   locateMLX,
   installMLX,
@@ -34,6 +40,7 @@ import {
 } from './workspace'
 import type { ChatRequest, StreamChunk, ToolCall } from '../shared/types'
 import { streamLocalMlx } from './providers/localMlxProvider'
+import { streamLocalOllama } from './providers/localOllamaProvider'
 import {
   listPiAiModels,
   listPiAiProviders,
@@ -41,6 +48,7 @@ import {
   streamPiAi
 } from './providers/piAiProvider'
 import { defaultProviderSelection } from './providers/types'
+import { ensureOllamaModel, listOllamaModels } from './ollama'
 import {
   readProviderConfig,
   writeProviderConfig
@@ -146,6 +154,16 @@ async function ensureMLXRunning(model: string): Promise<string> {
   return pythonToUse
 }
 
+async function ensureOllamaRunning(model: string): Promise<void> {
+  const label =
+    AVAILABLE_MODELS.find((m) => m.name === model)?.label ?? runtimeModelName(model)
+  send('setup:status', {
+    stage: 'connecting-ollama',
+    message: `Connecting to Ollama for ${label}…`
+  })
+  await ensureOllamaModel(model)
+}
+
 async function handleSetup(model: string): Promise<void> {
   try {
     send('setup:status', { stage: 'checking', message: 'Checking system…' })
@@ -182,6 +200,9 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     const baseMessages: MLXChatMessage[] = []
     const provider = req.provider ?? defaultProviderSelection(req.model)
     const isPiAi = provider.id === 'pi-ai'
+    if (provider.id === 'ollama') {
+      await ensureOllamaRunning(provider.model)
+    }
 
     if (req.mode === 'code') {
       const wsPath = await ensureWorkspace(req.conversationId)
@@ -292,12 +313,19 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
               apiKey: piAiApiKey,
               signal: abort.signal
             })
-          : streamLocalMlx({
-              conversationId: req.conversationId,
-              model: provider.model,
-              messages: baseMessages,
-              signal: abort.signal
-            })
+          : provider.id === 'ollama'
+            ? streamLocalOllama({
+                conversationId: req.conversationId,
+                model: provider.model,
+                messages: baseMessages,
+                signal: abort.signal
+              })
+            : streamLocalMlx({
+                conversationId: req.conversationId,
+                model: provider.model,
+                messages: baseMessages,
+                signal: abort.signal
+              })
 
       streamLoop: for await (const chunk of chunks) {
         if (chunk.content) {
@@ -502,6 +530,11 @@ function providerRuntimeList() {
       description: 'Runs local Gemma models through the existing MLX runtime.'
     },
     {
+      id: 'ollama' as const,
+      label: 'Ollama',
+      description: 'Connects to a locally running Ollama server.'
+    },
+    {
       id: 'pi-ai' as const,
       label: 'Pi AI Provider',
       description: 'Routes cloud and compatible models through @mariozechner/pi-ai.'
@@ -597,11 +630,22 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('setup:status', async () => {
     const mlx = locateMLX()
-    return { hasMLX: !!(mlx && mlx.installed) }
+    const ollamaModels = await listOllamaModels()
+    return {
+      hasMLX: !!(mlx && mlx.installed),
+      hasOllama: ollamaModels.length > 0
+    }
   })
 
   ipcMain.handle('models:list-local', async () => {
-    return listLocalModels()
+    const [mlxModels, ollamaModels] = await Promise.all([
+      listLocalModels(),
+      listOllamaModels()
+    ])
+    return [
+      ...mlxModels,
+      ...ollamaModels.map((model) => `${OLLAMA_MODEL_PREFIX}${model}`)
+    ]
   })
 
   ipcMain.handle('providers:list', async () => {

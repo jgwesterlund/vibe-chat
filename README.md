@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Vibe code locally or with your preferred AI provider.</strong><br/>
-  Run Gemma 4 on-device via Apple's MLX framework, or use multi-provider mode through <code>@mariozechner/pi-ai</code>.<br/>
+  Run Gemma 4 on-device via Apple's MLX framework, Ollama, or multi-provider mode through <code>@mariozechner/pi-ai</code>.<br/>
   Local mode stays offline. Provider mode keeps secrets in Electron main process.
 </p>
 
@@ -19,7 +19,7 @@
 
 What if you could vibe code from an airplane? Or use the same app with OpenAI, Anthropic, Gemini, Groq, OpenRouter, GitHub Copilot, OpenAI Codex, or your own OpenAI-compatible endpoint when you do want a provider-backed model?
 
-**Vibe Chat** is an open-source Electron app that runs Gemma 4 natively on Apple Silicon, while also supporting a Pi AI provider mode powered by [`@mariozechner/pi-ai`](https://www.npmjs.com/package/@mariozechner/pi-ai). You describe what you want to build, and it writes the code — HTML, CSS, JavaScript, multi-file projects — with a live preview that updates as the model types.
+**Vibe Chat** is an open-source Electron app that runs Gemma 4 natively on Apple Silicon via MLX/VLM, can connect to a local Ollama server, and supports a Pi AI provider mode powered by [`@mariozechner/pi-ai`](https://www.npmjs.com/package/@mariozechner/pi-ai). You describe what you want to build, and it writes the code — HTML, CSS, JavaScript, multi-file projects — with a live preview that updates as the model types.
 
 Local MLX mode is still a proof-of-concept for **fully offline, local-first vibe coding** using a small open model. Pi AI mode is for users who want unified provider routing, streaming, model selection, and OAuth/API key auth without hand-written integrations for every provider.
 
@@ -29,15 +29,18 @@ Local MLX mode is still a proof-of-concept for **fully offline, local-first vibe
 2. **Watch it code** — Vibe writes files character-by-character with a live preview
 3. **Iterate** — Ask for changes, it edits the files and the preview updates in real-time
 
-In Local MLX mode, everything happens locally. The model runs via [MLX-LM](https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm), Apple's framework for running LLMs on Apple Silicon. Your code, your prompts, your conversations — all on your machine.
+In Local MLX mode, everything happens locally. The model runs via MLX-VLM on Apple's MLX framework for Apple Silicon. Your code, your prompts, your conversations — all on your machine.
 
 In Pi AI mode, the Electron main process streams through `@mariozechner/pi-ai`. The renderer can choose providers and models, but it never reads back API keys, OAuth access tokens, OAuth refresh tokens, or the encrypted credential file.
+
+In Ollama mode, Vibe Chat connects to your local Ollama server at `OLLAMA_HOST` or `http://127.0.0.1:11434`. Install a model first, for example `ollama pull gemma4:31b`.
 
 ## Features
 
 - 🛠 **Build Mode** — Coding agent with a live preview canvas. Writes multi-file projects into a sandboxed workspace.
 - 💬 **Chat Mode** — Conversational AI with tool use (web search, URL fetch, calculator, bash).
 - 🔄 **Model Switching** — Hot-swap between 4 local model variants, or choose a Pi AI provider/model.
+- 🧩 **Ollama Mode** — Use locally installed Ollama models without MLX.
 - 🌐 **Multi-Provider Mode** — OpenAI, Anthropic, Google/Gemini, Mistral, Groq, xAI, OpenRouter, Vercel AI Gateway, GitHub Copilot, OpenAI Codex, Bedrock, and OpenAI-compatible endpoints via `@mariozechner/pi-ai`.
 - 🎤 **Voice Input** — Local speech-to-text via in-browser Whisper.
 - ✈️ **Offline Local Mode** — After the one-time MLX model download, Local MLX mode runs without internet.
@@ -68,6 +71,8 @@ First launch will auto-detect Python → create a venv → install MLX-LM → do
 > **Tip:** Install Python via Homebrew if you don't have it: `brew install python@3.13`
 
 You can also choose **Pi AI Provider** on the welcome screen. Pi AI mode does not require MLX, Python, or local model weights. It requires a valid provider/model and the right auth method.
+
+You can choose **Ollama** on the welcome screen if Ollama is already running and the target model is installed.
 
 ## Multi-Provider Mode
 
@@ -108,12 +113,18 @@ npm run dist
 
 Produces a signed `.dmg` in `dist/`. Share it directly — recipients just drag to Applications.
 
+Windows preview builds are available via:
+
+```bash
+npm run dist:win
+```
+
 ## Tech Stack
 
 | Layer | Tech |
 |---|---|
 | App Shell | Electron + Vite + React 19 + TypeScript + Tailwind |
-| Model Runtime | MLX-LM for local mode; `@mariozechner/pi-ai` for provider mode |
+| Model Runtime | MLX-VLM and Ollama for local mode; `@mariozechner/pi-ai` for provider mode |
 | Speech-to-Text | transformers.js (Whisper, runs in-browser via WASM) |
 | Workspace | Per-conversation sandboxed filesystem + local HTTP server |
 
