@@ -4,8 +4,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'Inter', 'sans-serif'],
-        mono: ['SF Mono', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+        sans: ['Avenir Next', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'Inter', 'sans-serif'],
+        display: ['Iowan Old Style', 'Palatino Linotype', 'Palatino', 'Cormorant Garamond', 'Times New Roman', 'serif'],
+        mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'monospace']
       },
       colors: {
         app: 'rgb(var(--color-app) / <alpha-value>)',
@@ -32,11 +33,11 @@ export default {
         success: 'rgb(var(--color-success) / <alpha-value>)',
         warning: 'rgb(var(--color-warning) / <alpha-value>)',
         accent: {
-          aubergine: '#4A154B',
-          blue: '#36C5F0',
-          green: '#2EB67D',
-          yellow: '#ECB22E',
-          red: '#E01E5A'
+          aubergine: '#cc785c',
+          blue: '#5db8a6',
+          green: '#5db872',
+          yellow: '#e8a55a',
+          red: '#c64545'
         },
         ink: {
           50: 'rgb(var(--color-ink-50) / <alpha-value>)',

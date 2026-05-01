@@ -1,5 +1,5 @@
 import { AVAILABLE_MODELS, type SetupStatus } from '@shared/types'
-import vibeLogoUrl from '../assets/vibe-logo.png'
+import BrandMark from './BrandMark'
 
 interface Props {
   status: SetupStatus
@@ -49,13 +49,13 @@ export default function Setup({
   }
 
   return (
-    <div className="drag flex h-full w-full flex-col">
+    <div className="drag flex h-full w-full flex-col bg-app text-fg">
       <div className="h-9" />
       <div className="flex flex-1 items-center justify-center px-8">
         <div className="no-drag w-full max-w-md">
           <div className="mb-8 text-center">
-            <VibeLogo className="mx-auto mb-5 h-20 w-20" />
-            <h1 className="text-[22px] font-semibold tracking-tight">Setting things up</h1>
+            <VibeLogo className="mx-auto mb-5 h-16 w-16" />
+            <h1 className="font-display text-[34px] leading-tight">Setting things up</h1>
             <p className="mt-1.5 text-sm text-muted">
               Everything runs locally. Nothing leaves your Mac.
             </p>
@@ -116,13 +116,13 @@ function WelcomeScreen({
   const mlxModels = AVAILABLE_MODELS.filter((m) => m.provider === 'mlx')
   const selected = mlxModels.find((m) => m.name === model) ?? mlxModels[1]
   return (
-    <div className="drag flex h-full w-full flex-col">
+    <div className="drag flex h-full w-full flex-col bg-app text-fg">
       <div className="h-9" />
       <div className="flex flex-1 items-center justify-center px-8">
         <div className="no-drag w-full max-w-md">
           <div className="anim-fade-up mb-8 text-center">
-            <VibeLogo className="mx-auto mb-5 h-24 w-24" />
-            <h1 className="text-[26px] font-semibold tracking-tight">Welcome to Vibe Chat</h1>
+            <VibeLogo className="mx-auto mb-5 h-16 w-16" />
+            <h1 className="font-display text-[40px] leading-tight">Welcome to Vibe Chat</h1>
             <p className="mt-2 text-[13.5px] leading-relaxed text-muted">
               A local AI assistant for chat and vibe coding.
               <br />
@@ -140,8 +140,8 @@ function WelcomeScreen({
                 onClick={() => onModelChange(m.name)}
                 className={`anim-fade-up group relative w-full rounded-xl border px-4 py-3 text-left transition active:scale-[0.99] ${
                   model === m.name
-                    ? 'border-sidebar-active bg-panel-strong'
-                    : 'border-line bg-panel hover:border-sidebar-active hover:bg-panel-strong'
+                    ? 'border-action bg-panel-strong'
+                    : 'border-line bg-panel hover:border-action hover:bg-panel-strong'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -164,19 +164,19 @@ function WelcomeScreen({
 
           <button
             onClick={() => onStart(selected.name)}
-            className="mt-6 w-full rounded-xl bg-action py-3 text-sm font-medium text-action-fg transition hover:opacity-90 active:scale-[0.99]"
+            className="mt-6 w-full rounded-lg bg-action py-3 text-sm font-medium text-action-fg transition hover:bg-[rgb(var(--color-primary-active))] active:scale-[0.99]"
           >
             Download {selected.label} &nbsp;·&nbsp; {selected.size}
           </button>
           <button
             onClick={onUsePiAi}
-            className="mt-2 w-full rounded-xl border border-line bg-panel py-3 text-sm font-medium text-fg transition hover:border-sidebar-active hover:bg-panel-strong active:scale-[0.99]"
+            className="mt-2 w-full rounded-lg border border-line bg-panel py-3 text-sm font-medium text-fg transition hover:border-action hover:bg-panel-strong active:scale-[0.99]"
           >
             Use AI Provider
           </button>
           <button
             onClick={onUseOllama}
-            className="mt-2 w-full rounded-xl border border-line bg-panel py-3 text-sm font-medium text-fg transition hover:border-sidebar-active hover:bg-panel-strong active:scale-[0.99]"
+            className="mt-2 w-full rounded-lg border border-line bg-panel py-3 text-sm font-medium text-fg transition hover:border-action hover:bg-panel-strong active:scale-[0.99]"
           >
             Use Ollama
           </button>
@@ -257,12 +257,5 @@ function StageDot({ state }: { state: 'pending' | 'active' | 'done' }) {
 }
 
 function VibeLogo({ className }: { className?: string }) {
-  return (
-    <img
-      src={vibeLogoUrl}
-      alt="Vibe Chat"
-      className={className}
-      draggable={false}
-    />
-  )
+  return <BrandMark className={className} />
 }

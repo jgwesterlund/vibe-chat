@@ -19,8 +19,8 @@ import {
   type ToolCall,
   type StreamChunk
 } from '@shared/types'
-import vibeLogoUrl from '../assets/vibe-logo.png'
 import type { ThemeMode } from '../theme'
+import BrandMark from './BrandMark'
 import Composer from './Composer'
 import Message from './Message'
 import Sidebar from './Sidebar'
@@ -416,7 +416,7 @@ function ResizableCanvas({
     >
       {/* Drag handle */}
       <div
-        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize select-none transition-colors hover:bg-sidebar-active/30 active:bg-sidebar-active/50"
+        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize select-none transition-colors hover:bg-action/30 active:bg-action/50"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -489,9 +489,12 @@ function Header({
         : (AVAILABLE_MODELS.find((m) => m.name === model)?.label ?? model)
 
   return (
-    <div className="drag flex h-11 shrink-0 items-center justify-between border-b border-line bg-surface px-4">
-      <div className="min-w-[8rem]" />
-      <div className="no-drag flex items-center gap-1 rounded-lg bg-control p-0.5 text-[12px]">
+    <div className="drag flex h-12 shrink-0 items-center justify-between border-b border-line bg-surface px-4">
+      <div className="no-drag flex min-w-[10rem] items-center gap-2 text-[12px] text-muted">
+        <span className="h-1.5 w-1.5 rounded-full bg-success" />
+        <span>{mode === 'code' ? 'Build workspace' : 'Chat thread'}</span>
+      </div>
+      <div className="no-drag flex items-center gap-1 rounded-lg border border-line bg-panel p-0.5 text-[12px]">
         <ModePill active={mode === 'chat'} onClick={() => mode === 'code' && onToggleMode()}>
           Chat
         </ModePill>
@@ -737,7 +740,7 @@ function DesignMenu({
         onClick={() => setOpen((o) => !o)}
         className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition ${
           selected
-            ? 'border-sidebar-active/70 bg-control-hover text-fg'
+            ? 'border-action/70 bg-control-hover text-fg'
             : 'border-line bg-panel text-muted hover:bg-panel-strong hover:text-fg'
         }`}
         title={selected ? `Design: ${selected.name}` : 'Design: None'}
@@ -764,7 +767,7 @@ function DesignMenu({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search designs"
-                  className="h-8 w-full rounded-lg border border-line bg-surface pl-8 pr-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active"
+                  className="h-8 w-full rounded-lg border border-line bg-surface pl-8 pr-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
                 />
               </div>
               {selected && (
@@ -780,7 +783,7 @@ function DesignMenu({
                 onClick={() => setExtractOpen((current) => !current)}
                 className={`h-8 rounded-lg border px-3 text-[12px] font-medium transition ${
                   extractOpen
-                    ? 'border-sidebar-active bg-control-hover text-fg'
+                    ? 'border-action bg-control-hover text-fg'
                     : 'border-line bg-control text-muted hover:bg-control-hover hover:text-fg'
                 }`}
               >
@@ -798,14 +801,14 @@ function DesignMenu({
                     onChange={(e) => setExtractUrl(e.target.value)}
                     placeholder="https://example.com"
                     disabled={!!extractJobId}
-                    className="h-8 rounded-lg border border-line bg-panel px-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active disabled:opacity-60"
+                    className="h-8 rounded-lg border border-line bg-panel px-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action disabled:opacity-60"
                   />
                   <input
                     value={extractName}
                     onChange={(e) => setExtractName(e.target.value)}
                     placeholder="Name"
                     disabled={!!extractJobId}
-                    className="h-8 rounded-lg border border-line bg-panel px-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active disabled:opacity-60"
+                    className="h-8 rounded-lg border border-line bg-panel px-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action disabled:opacity-60"
                   />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted">
@@ -863,7 +866,7 @@ function DesignMenu({
                   onClick={() => setCategory(cat)}
                   className={`shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-medium transition ${
                     category === cat
-                      ? 'bg-sidebar-active text-white'
+                      ? 'bg-action text-action-fg'
                       : 'bg-control text-muted hover:bg-control-hover hover:text-fg'
                   }`}
                 >
@@ -894,7 +897,7 @@ function DesignMenu({
                       key={design.customId}
                       className={`group rounded-lg border p-2 transition ${
                         active
-                          ? 'border-sidebar-active bg-control-hover'
+                          ? 'border-action bg-control-hover'
                           : 'border-transparent hover:border-line hover:bg-control'
                       }`}
                     >
@@ -909,7 +912,7 @@ function DesignMenu({
                               {design.name}
                             </span>
                             {active && (
-                              <span className="rounded-full bg-sidebar-active px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-white">
+                              <span className="rounded-full bg-action px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-action-fg">
                                 selected
                               </span>
                             )}
@@ -948,7 +951,7 @@ function DesignMenu({
                   key={design.slug}
                   className={`group rounded-lg border p-2 transition ${
                     active
-                      ? 'border-sidebar-active bg-control-hover'
+                      ? 'border-action bg-control-hover'
                       : 'border-transparent hover:border-line hover:bg-control'
                   }`}
                 >
@@ -963,7 +966,7 @@ function DesignMenu({
                           {design.name}
                         </span>
                         {active && (
-                          <span className="rounded-full bg-sidebar-active px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-white">
+                          <span className="rounded-full bg-action px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-action-fg">
                             selected
                           </span>
                         )}
@@ -1261,7 +1264,7 @@ function ProviderPicker({
           onClick={() => setActiveProvider('local-mlx')}
           className={`rounded-md px-2 py-1.5 font-medium transition ${
             activeProvider === 'local-mlx'
-              ? 'bg-sidebar-active text-white'
+              ? 'bg-action text-action-fg'
               : 'text-muted hover:bg-control-hover hover:text-fg'
           }`}
         >
@@ -1271,7 +1274,7 @@ function ProviderPicker({
           onClick={() => setActiveProvider('ollama')}
           className={`rounded-md px-2 py-1.5 font-medium transition ${
             activeProvider === 'ollama'
-              ? 'bg-sidebar-active text-white'
+              ? 'bg-action text-action-fg'
               : 'text-muted hover:bg-control-hover hover:text-fg'
           }`}
         >
@@ -1281,7 +1284,7 @@ function ProviderPicker({
           onClick={() => setActiveProvider('pi-ai')}
           className={`rounded-md px-2 py-1.5 font-medium transition ${
             activeProvider === 'pi-ai'
-              ? 'bg-sidebar-active text-white'
+              ? 'bg-action text-action-fg'
               : 'text-muted hover:bg-control-hover hover:text-fg'
           }`}
         >
@@ -1345,7 +1348,7 @@ function ProviderPicker({
               <select
                 value={draftOllamaModel}
                 onChange={(e) => setDraftOllamaModel(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-sidebar-active"
+                className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-action"
               >
                 <option value={draftOllamaModel}>
                   {runtimeModelName(draftOllamaModel)}
@@ -1363,7 +1366,7 @@ function ProviderPicker({
               value={draftOllamaModel}
               onChange={(e) => setDraftOllamaModel(e.target.value)}
               placeholder="ollama:gemma4:31b"
-              className="mt-2 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active"
+              className="mt-2 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
             />
             <p className="mt-2 rounded-lg border border-line bg-control p-2 text-[11px] text-ink-300">
               Start Ollama and install a model first, for example: <code>ollama pull gemma4:31b</code>.
@@ -1396,7 +1399,7 @@ function ProviderPicker({
                   modelId: e.target.value === 'custom-openai-compatible' ? draft.modelId : ''
                 })
               }}
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-sidebar-active"
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-action"
             >
               {piProviders.map((provider) => (
                 <option key={provider.id} value={provider.id}>
@@ -1423,7 +1426,7 @@ function ProviderPicker({
               value={models.some((m) => m.id === draft.modelId) ? draft.modelId : ''}
               onChange={(e) => updateDraft({ modelId: e.target.value })}
               disabled={models.length === 0}
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-sidebar-active disabled:opacity-50"
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-action disabled:opacity-50"
             >
               <option value="">Custom model id</option>
               {models.map((m) => (
@@ -1440,7 +1443,7 @@ function ProviderPicker({
               value={draft.modelId}
               onChange={(e) => updateDraft({ modelId: e.target.value })}
               placeholder={models[0]?.id ?? 'model-id'}
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active"
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
             />
           </label>
 
@@ -1449,7 +1452,7 @@ function ProviderPicker({
             <select
               value={draft.authMode}
               onChange={(e) => updateDraft({ authMode: e.target.value as PiAiAuthMode })}
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-sidebar-active"
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none focus:border-action"
             >
               <option value="api-key">API key</option>
               <option value="oauth" disabled={!selectedProvider?.supportsOAuth}>
@@ -1467,7 +1470,7 @@ function ProviderPicker({
                 type="password"
                 autoComplete="off"
                 placeholder="Paste API key"
-                className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active"
+                className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
               />
               <button
                 onClick={saveApiKey}
@@ -1514,7 +1517,7 @@ function ProviderPicker({
               value={draft.baseUrl ?? ''}
               onChange={(e) => updateDraft({ baseUrl: e.target.value || undefined })}
               placeholder="https://api.example.com/v1"
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-sidebar-active"
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-2 py-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
             />
           </label>
 
@@ -1657,7 +1660,7 @@ function ModePill({
     <button
       onClick={onClick}
       className={`rounded-md px-3 py-1 font-medium transition-all duration-200 ease-out ${
-        active ? 'bg-sidebar-active text-white shadow-sm scale-[1.02]' : 'text-muted hover:text-fg scale-100'
+        active ? 'bg-panel-strong text-fg shadow-sm scale-[1.02]' : 'text-muted hover:text-fg scale-100'
       }`}
     >
       {children}
@@ -1754,11 +1757,11 @@ function EmptyState({ mode, providerLabel }: { mode: AgentMode; providerLabel: s
   return (
     <div className="anim-fade-in flex h-full flex-col items-center justify-center px-8">
       <div className="anim-fade-up mb-12 text-center">
-        <img src={vibeLogoUrl} alt="Vibe Chat" className="mx-auto mb-6 h-20 w-20" draggable={false} />
-        <div className="mb-3 text-[32px] font-semibold tracking-tight text-fg">
+        <BrandMark className="mx-auto mb-6 h-14 w-14" />
+        <div className="font-display mb-3 text-[40px] leading-tight text-fg">
           {mode === 'code' ? 'What should we build?' : 'How can I help?'}
         </div>
-        <div className="text-sm text-muted">
+        <div className="mx-auto max-w-xl text-[14px] leading-relaxed text-muted">
           {mode === 'code'
             ? providerLabel === 'local'
               ? 'Vibe will write files into a workspace and show a live preview on the right.'
@@ -1788,7 +1791,7 @@ function EmptyState({ mode, providerLabel }: { mode: AgentMode; providerLabel: s
                 ta.focus()
               }
             }}
-            className="anim-fade-up rounded-xl border border-line bg-panel px-4 py-3 text-left transition hover:border-sidebar-active hover:bg-panel-strong active:scale-[0.98]"
+            className="anim-fade-up rounded-lg border border-line bg-panel px-4 py-3 text-left transition hover:border-action hover:bg-panel-strong active:scale-[0.98]"
           >
             <div className="text-sm font-medium text-fg">{s.title}</div>
             <div className="mt-0.5 text-[12.5px] text-muted">{s.prompt}</div>
