@@ -78,6 +78,14 @@ import {
   readDesignContext,
   startDesignExtraction
 } from './designs'
+import {
+  DESIGN_GUARD_MAX_REPAIR_ROUNDS,
+  designGuardFinalWarning,
+  designGuardRepairPrompt,
+  formatDesignGuardScanResult,
+  scanWorkspaceDesignGuard,
+  type DesignGuardReport
+} from './designGuard'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -196,6 +204,11 @@ async function handleSetup(model: string): Promise<void> {
 
 const MAX_TOOL_ROUNDS_CHAT = 6
 const MAX_TOOL_ROUNDS_CODE = 40
+const DESIGN_GUARD_MUTATING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'run_bash'])
+
+function isDesignGuardMutatingTool(name: string): boolean {
+  return DESIGN_GUARD_MUTATING_TOOLS.has(name)
+}
 
 function actionTarget(_name: string, args: Record<string, unknown>): string | undefined {
   if (typeof args.path === 'string') return args.path
@@ -214,6 +227,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
 
   try {
     const baseMessages: MLXChatMessage[] = []
+    let codeWorkspacePath: string | null = null
     const provider = req.provider ?? defaultProviderSelection(req.model)
     const isPiAi = provider.id === 'pi-ai'
     if (provider.id === 'ollama') {
@@ -222,6 +236,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
 
     if (req.mode === 'code') {
       const wsPath = await ensureWorkspace(req.conversationId)
+      codeWorkspacePath = wsPath
       const href = previewUrl(req.conversationId)
       const designMarkdown = req.design
         ? await readDesignContext(req.conversationId, req.design)
@@ -263,6 +278,50 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     const useTools = req.mode === 'code' || req.enableTools
     const maxRounds = req.mode === 'code' ? MAX_TOOL_ROUNDS_CODE : MAX_TOOL_ROUNDS_CHAT
     const piAiApiKey = provider.id === 'pi-ai' ? await resolvePiAiApiKey(provider.config) : undefined
+    let designGuardReport: DesignGuardReport | null = null
+    let designGuardRepairRounds = 0
+
+    const scanDesignGuard = async (): Promise<DesignGuardReport | null> => {
+      if (req.mode !== 'code' || !codeWorkspacePath) return null
+      emit({
+        type: 'activity',
+        activity: { kind: 'tool', tool: 'design_guard_scan', target: 'workspace' }
+      })
+      try {
+        designGuardReport = await scanWorkspaceDesignGuard(codeWorkspacePath)
+      } catch (e) {
+        designGuardReport = { findings: [], errors: [`workspace: ${(e as Error).message}`] }
+      }
+      return designGuardReport
+    }
+
+    const emitDesignGuardResult = (report: DesignGuardReport): void => {
+      const call: ToolCall = {
+        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        name: 'design_guard_scan',
+        args: { target: 'workspace' },
+        running: true
+      }
+      emit({ type: 'tool_call', call })
+      emit({
+        type: 'activity',
+        activity: { kind: 'tool', tool: 'design_guard_scan', target: 'workspace' }
+      })
+      emit({ type: 'tool_result', id: call.id, result: formatDesignGuardScanResult(report) })
+    }
+
+    const queueDesignGuardRepair = (report: DesignGuardReport): boolean => {
+      if (report.findings.length === 0) return false
+      if (designGuardRepairRounds >= DESIGN_GUARD_MAX_REPAIR_ROUNDS) return false
+      designGuardRepairRounds++
+      emitDesignGuardResult(report)
+      baseMessages.push({
+        role: 'user',
+        content: designGuardRepairPrompt(report, designGuardRepairRounds)
+      })
+      emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
+      return true
+    }
 
     emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
 
@@ -476,6 +535,13 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
               content: `[${hadError ? 'error' : 'ok'}] ${found.name}: ${result}`
             })
             executedAction = true
+            if (isDesignGuardMutatingTool(found.name)) {
+              await scanDesignGuard()
+            }
+            if (found.name === 'open_preview') {
+              const report = designGuardReport ?? (await scanDesignGuard())
+              if (report) queueDesignGuardRepair(report)
+            }
             if (livePath) {
               send('file:streaming', {
                 conversationId: req.conversationId,
@@ -515,6 +581,28 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
           })
           emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
           continue // go to round 1
+        }
+        if (req.mode === 'code') {
+          const report = designGuardReport ?? (await scanDesignGuard())
+          if (report && report.findings.length > 0) {
+            if (designGuardRepairRounds < DESIGN_GUARD_MAX_REPAIR_ROUNDS) {
+              if (emittedIdx < buffer.length) {
+                emit({ type: 'token', text: buffer.slice(emittedIdx) })
+              }
+              if (buffer.trim()) {
+                baseMessages.push({ role: 'assistant', content: buffer })
+              }
+              if (queueDesignGuardRepair(report)) continue
+            } else {
+              if (emittedIdx < buffer.length) {
+                emit({ type: 'token', text: buffer.slice(emittedIdx) })
+              }
+              emit({
+                type: 'token',
+                text: `${buffer.trim() ? '\n\n' : ''}${designGuardFinalWarning(report)}`
+              })
+            }
+          }
         }
         emit({ type: 'activity', activity: { kind: 'idle' } })
         emit({ type: 'done' })
