@@ -7,6 +7,7 @@ interface Props {
   onModelChange: (m: string) => void
   onStart: (model: string) => void
   onUsePiAi: () => void
+  onUseOllama: () => void
 }
 
 function formatBytes(n?: number): string {
@@ -21,7 +22,14 @@ function formatBytes(n?: number): string {
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`
 }
 
-export default function Setup({ status, model, onModelChange, onStart, onUsePiAi }: Props) {
+export default function Setup({
+  status,
+  model,
+  onModelChange,
+  onStart,
+  onUsePiAi,
+  onUseOllama
+}: Props) {
   const isWorking =
     status.stage === 'checking' ||
     status.stage === 'installing-mlx' ||
@@ -35,6 +43,7 @@ export default function Setup({ status, model, onModelChange, onStart, onUsePiAi
         onModelChange={onModelChange}
         onStart={onStart}
         onUsePiAi={onUsePiAi}
+        onUseOllama={onUseOllama}
       />
     )
   }
@@ -95,14 +104,17 @@ function WelcomeScreen({
   model,
   onModelChange,
   onStart,
-  onUsePiAi
+  onUsePiAi,
+  onUseOllama
 }: {
   model: string
   onModelChange: (m: string) => void
   onStart: (model: string) => void
   onUsePiAi: () => void
+  onUseOllama: () => void
 }) {
-  const selected = AVAILABLE_MODELS.find((m) => m.name === model) ?? AVAILABLE_MODELS[1]
+  const mlxModels = AVAILABLE_MODELS.filter((m) => m.provider === 'mlx')
+  const selected = mlxModels.find((m) => m.name === model) ?? mlxModels[1]
   return (
     <div className="drag flex h-full w-full flex-col">
       <div className="h-9" />
@@ -122,7 +134,7 @@ function WelcomeScreen({
             Pick a model
           </div>
           <div className="anim-stagger space-y-2">
-            {AVAILABLE_MODELS.map((m) => (
+            {mlxModels.map((m) => (
               <button
                 key={m.name}
                 onClick={() => onModelChange(m.name)}
@@ -162,8 +174,14 @@ function WelcomeScreen({
           >
             Use Pi AI Provider
           </button>
+          <button
+            onClick={onUseOllama}
+            className="mt-2 w-full rounded-xl border border-line bg-panel py-3 text-sm font-medium text-fg transition hover:border-sidebar-active hover:bg-panel-strong active:scale-[0.99]"
+          >
+            Use Ollama
+          </button>
           <p className="mt-3 text-center text-[11px] text-muted">
-            Local MLX works offline. Pi AI uses provider credentials and does not require MLX.
+            Local MLX works offline. Pi AI and Ollama do not require MLX.
           </p>
         </div>
       </div>
@@ -175,6 +193,7 @@ function StageList({ status }: { status: SetupStatus }) {
   const stages: Array<{ key: SetupStatus['stage']; label: string }> = [
     { key: 'installing-mlx', label: 'Install MLX runtime' },
     { key: 'starting-mlx', label: 'Start runtime & load model' },
+    { key: 'connecting-ollama', label: 'Connect to Ollama' },
     { key: 'downloading-model', label: 'Download model' },
     { key: 'ready', label: 'Ready to chat' }
   ]
@@ -182,6 +201,7 @@ function StageList({ status }: { status: SetupStatus }) {
     'checking',
     'installing-mlx',
     'starting-mlx',
+    'connecting-ollama',
     'downloading-model',
     'ready'
   ]

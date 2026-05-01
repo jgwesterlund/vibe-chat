@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
 import {
   DEFAULT_MODEL,
+  DEFAULT_OLLAMA_MODEL,
   DEFAULT_PI_AI_CONFIG,
   type AppProviderConfig,
   type SetupStatus
@@ -25,6 +26,7 @@ function fallbackProviderConfig(): AppProviderConfig {
   return {
     selectedProvider: 'local-mlx',
     localModel: DEFAULT_MODEL,
+    ollamaModel: DEFAULT_OLLAMA_MODEL,
     piAi: { ...DEFAULT_PI_AI_CONFIG }
   }
 }
@@ -85,7 +87,7 @@ export default function App() {
       })
 
       const providerConfig = await window.api.getProviderConfig()
-      if (providerConfig.selectedProvider === 'pi-ai') {
+      if (providerConfig.selectedProvider === 'pi-ai' || providerConfig.selectedProvider === 'ollama') {
         setState({
           phase: 'ready',
           model: providerConfig.localModel,
@@ -165,6 +167,15 @@ export default function App() {
     setState({ phase: 'ready', model: saved.localModel, providerConfig: saved })
   }
 
+  async function handleUseOllama(): Promise<void> {
+    const current = state.phase === 'setup' ? state.providerConfig : fallbackProviderConfig()
+    const saved = await window.api.saveProviderConfig({
+      ...current,
+      selectedProvider: 'ollama'
+    })
+    setState({ phase: 'ready', model: saved.localModel, providerConfig: saved })
+  }
+
   if (state.phase === 'boot') {
     return <BootSplash />
   }
@@ -200,6 +211,7 @@ export default function App() {
             window.api.startSetup(model)
           }}
           onUsePiAi={handleUsePiAi}
+          onUseOllama={handleUseOllama}
         />
       </div>
     )

@@ -2,13 +2,19 @@ import { app } from 'electron'
 import { spawn, ChildProcess, spawnSync } from 'child_process'
 import { join } from 'path'
 import { existsSync, rmSync } from 'fs'
+import { createServer } from 'net'
 
-const MLX_PORT = 11434
-const MLX_HOST = `127.0.0.1:${MLX_PORT}`
-const MLX_URL = `http://${MLX_HOST}`
+const MLX_HOST = '127.0.0.1'
+const PREFERRED_MLX_PORT = 11534
+const FALLBACK_MLX_PORTS = Array.from({ length: 11 }, (_, i) => PREFERRED_MLX_PORT + i)
 
 let serverProc: ChildProcess | null = null
 let currentModel: string | null = null
+let currentPort: number | null = null
+
+function mlxUrl(): string | null {
+  return currentPort ? `http://${MLX_HOST}:${currentPort}` : null
+}
 
 // ---------------------------------------------------------------------------
 // Paths — everything lives under <appData>/mlx/
@@ -31,13 +37,91 @@ function modelsDir(): string {
   return join(dataDir(), 'models')
 }
 
+type CommandInvocation = {
+  cmd: string
+  args: string[]
+}
+
+const arm64PythonSupport = new Map<string, boolean>()
+
+function canRunArm64Python(python: string): boolean {
+  if (process.platform !== 'darwin' || !existsSync('/usr/bin/arch')) return false
+
+  const cached = arm64PythonSupport.get(python)
+  if (cached != null) return cached
+
+  try {
+    const check = spawnSync('/usr/bin/arch', [
+      '-arm64',
+      python,
+      '-c',
+      'import platform; print(platform.machine())'
+    ], {
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    const ok = check.status === 0 && check.stdout?.toString().trim() === 'arm64'
+    arm64PythonSupport.set(python, ok)
+    return ok
+  } catch {
+    arm64PythonSupport.set(python, false)
+    return false
+  }
+}
+
+function pythonInvocation(python: string, args: string[]): CommandInvocation {
+  if (canRunArm64Python(python)) {
+    return { cmd: '/usr/bin/arch', args: ['-arm64', python, ...args] }
+  }
+  return { cmd: python, args }
+}
+
+function spawnPythonSync(
+  python: string,
+  args: string[],
+  options: Parameters<typeof spawnSync>[2]
+): ReturnType<typeof spawnSync> {
+  const invocation = pythonInvocation(python, args)
+  return spawnSync(invocation.cmd, invocation.args, options)
+}
+
+function canBind(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer()
+    server.once('error', () => resolve(false))
+    server.once('listening', () => {
+      server.close(() => resolve(true))
+    })
+    server.listen(port, MLX_HOST)
+  })
+}
+
+async function choosePort(): Promise<number> {
+  for (const port of FALLBACK_MLX_PORTS) {
+    if (await canBind(port)) return port
+  }
+
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.once('listening', () => {
+      const address = server.address()
+      server.close(() => {
+        if (address && typeof address === 'object') resolve(address.port)
+        else reject(new Error('Could not select a free MLX server port'))
+      })
+    })
+    server.listen(0, MLX_HOST)
+  })
+}
+
 // ---------------------------------------------------------------------------
 // System Python detection
 // ---------------------------------------------------------------------------
 
 /**
  * Find a compatible system Python (3.10–3.13).
- * We explicitly skip 3.14+ because mlx-lm doesn't publish wheels for it yet.
+ * We explicitly skip 3.14+ because mlx-vlm doesn't publish wheels for it yet.
  * We try versioned binaries first (most reliable), then fall back to `python3`.
  */
 function findSystemPython(): string | null {
@@ -59,7 +143,7 @@ function findSystemPython(): string | null {
 
   for (const c of versionedCandidates) {
     try {
-      const s = spawnSync(c, ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] })
+      const s = spawnPythonSync(c, ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] })
       if (s.status === 0) {
         console.log(`[mlx] Found compatible Python: ${c} (${s.stdout.toString().trim()})`)
         return c
@@ -73,7 +157,7 @@ function findSystemPython(): string | null {
   const fallbacks = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3']
   for (const c of fallbacks) {
     try {
-      const s = spawnSync(c, ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] })
+      const s = spawnPythonSync(c, ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] })
       if (s.status === 0) {
         const ver = s.stdout.toString().trim() // e.g. "Python 3.13.2"
         const match = ver.match(/Python 3\.(\d+)/)
@@ -84,7 +168,7 @@ function findSystemPython(): string | null {
         } else if (minor < 10) {
           console.log(`[mlx] Skipping ${c} — ${ver} is too old (need 3.10+)`)
         } else {
-          console.log(`[mlx] Skipping ${c} — ${ver} is too new for mlx-lm`)
+          console.log(`[mlx] Skipping ${c} — ${ver} is too new for mlx-vlm`)
         }
       }
     } catch {
@@ -100,23 +184,23 @@ function findSystemPython(): string | null {
 // ---------------------------------------------------------------------------
 
 export interface MLXStatus {
-  /** Python to use for running mlx_lm (venv python if installed, system python otherwise) */
+  /** Python to use for running mlx_vlm (venv python if installed, system python otherwise) */
   python: string
-  /** Whether mlx-lm is installed and importable */
+  /** Whether mlx-vlm is installed and importable */
   installed: boolean
 }
 
 /**
- * Check if mlx-lm is ready to use.
- * Returns the python path to use and whether mlx_lm is installed.
+ * Check if mlx-vlm is ready to use.
+ * Returns the python path to use and whether mlx_vlm is installed.
  */
 export function locateMLX(): MLXStatus | null {
-  // 1. Check if we have a working venv with mlx_lm installed
+  // 1. Check if we have a working venv with mlx_vlm installed
   const vPy = venvPython()
   if (existsSync(vPy)) {
-    // Verify the venv Python is 3.10+ — older versions can't run modern mlx-lm
+    // Verify the venv Python is 3.10+ — older versions can't run modern mlx-vlm
     try {
-      const verCheck = spawnSync(vPy, ['--version'], {
+      const verCheck = spawnPythonSync(vPy, ['--version'], {
         timeout: 5000,
         stdio: ['ignore', 'pipe', 'pipe']
       })
@@ -128,21 +212,21 @@ export function locateMLX(): MLXStatus | null {
         try { rmSync(venvDir(), { recursive: true, force: true }) } catch { /* ok */ }
         // Fall through to system python detection below
       } else {
-        // Venv Python is compatible — check if mlx_lm is installed
+        // Venv Python is compatible — check if mlx_vlm is installed
         try {
-          const check = spawnSync(vPy, ['-c', 'import mlx_lm; print("ok")'], {
+          const check = spawnPythonSync(vPy, ['-c', 'import mlx_vlm; print("ok")'], {
             timeout: 15000,
             stdio: ['ignore', 'pipe', 'pipe']
           })
           const stdout = check.stdout?.toString().trim() || ''
           if (check.status === 0 && stdout.includes('ok')) {
-            console.log('[mlx] Found mlx-lm in venv')
+            console.log('[mlx] Found mlx-vlm in venv')
             return { python: vPy, installed: true }
           }
         } catch {
-          // venv exists but mlx_lm not importable
+          // venv exists but mlx_vlm not importable
         }
-        // Venv exists but mlx_lm is missing — can still pip install into it
+        // Venv exists but mlx_vlm is missing — can still pip install into it
         return { python: vPy, installed: false }
       }
     } catch {
@@ -159,7 +243,7 @@ export function locateMLX(): MLXStatus | null {
 }
 
 // ---------------------------------------------------------------------------
-// Installation — creates a venv and installs mlx-lm
+// Installation — creates a venv and installs mlx-vlm
 // ---------------------------------------------------------------------------
 
 export type InstallProgress = {
@@ -168,7 +252,7 @@ export type InstallProgress = {
 }
 
 /**
- * Install mlx-lm into a dedicated virtual environment.
+ * Install mlx-vlm into a dedicated virtual environment.
  * Uses --index-url to bypass any corporate pip registries.
  * Returns the venv python path to use for all subsequent operations.
  */
@@ -189,35 +273,44 @@ export async function installMLX(
   if (!existsSync(vPy)) {
     onProgress({ stage: 'install', message: 'Creating Python virtual environment…' })
     console.log(`[mlx] Creating venv at ${vDir} using ${sysPython}`)
-    await runProcess(sysPython, ['-m', 'venv', vDir], onProgress)
+    await runPythonProcess(sysPython, ['-m', 'venv', vDir], onProgress)
   }
 
   // Step 2: Upgrade pip first (avoids old-pip issues)
   onProgress({ stage: 'install', message: 'Upgrading pip…' })
-  await runProcess(vPy, [
+  await runPythonProcess(vPy, [
     '-m', 'pip', 'install', '--upgrade', 'pip',
     '--index-url', 'https://pypi.org/simple/'
   ], onProgress)
 
-  // Step 3: Install mlx-lm (force public PyPI to bypass corporate registries)
-  onProgress({ stage: 'install', message: 'Installing mlx-lm (this may take a few minutes)…' })
-  await runProcess(vPy, [
-    '-m', 'pip', 'install', '--upgrade', 'mlx-lm>=0.24.0',
+  // Step 3: Install mlx-vlm (force public PyPI to bypass corporate registries)
+  onProgress({ stage: 'install', message: 'Installing mlx-vlm (this may take a few minutes)…' })
+  await runPythonProcess(vPy, [
+    '-m', 'pip', 'install', '--upgrade', 'mlx-vlm>=0.4.3',
     '--index-url', 'https://pypi.org/simple/'
   ], onProgress)
 
   // Verify the install worked
-  const check = spawnSync(vPy, ['-c', 'import mlx_lm; print("ok")'], {
+  const check = spawnPythonSync(vPy, ['-c', 'import mlx_vlm; print("ok")'], {
     timeout: 15000,
     stdio: ['ignore', 'pipe', 'pipe']
   })
   if (check.status !== 0 || !check.stdout?.toString().includes('ok')) {
     const err = check.stderr?.toString().slice(-300) || 'unknown error'
-    throw new Error(`mlx-lm installed but failed to import: ${err}`)
+    throw new Error(`mlx-vlm installed but failed to import: ${err}`)
   }
 
-  console.log('[mlx] mlx-lm installed successfully')
+  console.log('[mlx] mlx-vlm installed successfully')
   return vPy
+}
+
+function runPythonProcess(
+  python: string,
+  args: string[],
+  onProgress: (p: InstallProgress) => void
+): Promise<void> {
+  const invocation = pythonInvocation(python, args)
+  return runProcess(invocation.cmd, invocation.args, onProgress)
 }
 
 /** Run a subprocess and stream output to onProgress */
@@ -275,6 +368,8 @@ export async function startServer(
 
   // Kill existing server if running with different model
   stopServer()
+  const port = await choosePort()
+  const url = `http://${MLX_HOST}:${port}`
 
   const env = {
     ...process.env,
@@ -288,11 +383,15 @@ export async function startServer(
   let earlyExit: { code: number | null; stderr: string } | null = null
   let stderrBuf = ''
 
-  console.log(`[mlx] Starting server: ${python} -m mlx_lm.server --model ${model} --port ${MLX_PORT}`)
+  const invocation = pythonInvocation(python, [
+    '-m', 'mlx_vlm', 'server', '--model', model, '--port', String(port)
+  ])
+
+  console.log(`[mlx] Starting server: ${invocation.cmd} ${invocation.args.join(' ')}`)
 
   serverProc = spawn(
-    python,
-    ['-m', 'mlx_lm.server', '--model', model, '--port', String(MLX_PORT)],
+    invocation.cmd,
+    invocation.args,
     {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -300,6 +399,7 @@ export async function startServer(
     }
   )
   currentModel = model
+  currentPort = port
 
   serverProc.stdout?.on('data', (d) => console.log('[mlx]', d.toString().trim()))
   serverProc.stderr?.on('data', (d) => {
@@ -337,11 +437,12 @@ export async function startServer(
     earlyExit = { code, stderr: stderrBuf }
     serverProc = null
     currentModel = null
+    currentPort = null
   })
 
   // Wait for the server to become healthy.
   // First run downloads model weights from HuggingFace, so allow up to 10 min.
-  await waitForHealth(600_000, () => earlyExit)
+  await waitForHealth(url, 600_000, () => earlyExit)
 }
 
 export function stopServer(): void {
@@ -350,6 +451,7 @@ export function stopServer(): void {
     serverProc.kill('SIGTERM')
     serverProc = null
     currentModel = null
+    currentPort = null
   }
 }
 
@@ -358,6 +460,7 @@ export function stopServer(): void {
  * If the server process exits early, throw immediately.
  */
 async function waitForHealth(
+  url: string,
   timeoutMs: number,
   checkEarlyExit: () => { code: number | null; stderr: string } | null
 ): Promise<void> {
@@ -368,13 +471,16 @@ async function waitForHealth(
     // Check if the server process crashed
     const exit = checkEarlyExit()
     if (exit) {
+      const message = /address already in use|errno 48|eaddrinuse/i.test(exit.stderr)
+        ? `MLX server could not bind its selected port. Another process may have claimed it while Vibe Chat was starting. ${exit.stderr.slice(-500)}`
+        : `MLX server exited with code ${exit.code}. ${exit.stderr.slice(-500)}`
       throw new Error(
-        `MLX server exited with code ${exit.code}. ${exit.stderr.slice(-500)}`
+        message
       )
     }
 
     try {
-      const res = await fetch(`${MLX_URL}/v1/models`)
+      const res = await fetch(`${url}/v1/models`)
       if (res.ok) {
         console.log('[mlx] Server is healthy')
         return
@@ -392,8 +498,11 @@ async function waitForHealth(
 // ---------------------------------------------------------------------------
 
 export async function listLocalModels(): Promise<string[]> {
+  const url = mlxUrl()
+  if (!url) return []
+
   try {
-    const res = await fetch(`${MLX_URL}/v1/models`)
+    const res = await fetch(`${url}/v1/models`)
     if (!res.ok) return []
     const data = (await res.json()) as { data?: Array<{ id: string }> }
     return (data.data ?? []).map((m) => m.id)
@@ -431,7 +540,12 @@ export interface MLXChatOptions {
 export async function* chatStream(
   opts: MLXChatOptions
 ): AsyncGenerator<{ content?: string; done?: boolean }> {
-  const res = await fetch(`${MLX_URL}/v1/chat/completions`, {
+  const url = mlxUrl()
+  if (!url) {
+    throw new Error('MLX server is not running. Start setup before sending a chat message.')
+  }
+
+  const res = await fetch(`${url}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -516,5 +630,3 @@ async function* readSSE(stream: ReadableStream<Uint8Array>): AsyncGenerator<stri
     }
   }
 }
-
-export { MLX_URL }

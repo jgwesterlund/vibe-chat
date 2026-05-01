@@ -2,6 +2,7 @@ export type SetupStage =
   | 'checking'
   | 'installing-mlx'
   | 'starting-mlx'
+  | 'connecting-ollama'
   | 'downloading-model'
   | 'ready'
   | 'error'
@@ -48,7 +49,7 @@ export interface ChatRequest {
   mode: AgentMode
 }
 
-export type RuntimeProviderId = 'local-mlx' | 'pi-ai'
+export type RuntimeProviderId = 'local-mlx' | 'ollama' | 'pi-ai'
 
 export type PiAiAuthMode = 'api-key' | 'oauth' | 'env' | 'none'
 
@@ -94,16 +95,25 @@ export interface LocalMlxProviderSelection {
   model: string
 }
 
+export interface LocalOllamaProviderSelection {
+  id: 'ollama'
+  model: string
+}
+
 export interface PiAiProviderSelection {
   id: 'pi-ai'
   config: PiAiProviderConfig
 }
 
-export type ChatProviderSelection = LocalMlxProviderSelection | PiAiProviderSelection
+export type ChatProviderSelection =
+  | LocalMlxProviderSelection
+  | LocalOllamaProviderSelection
+  | PiAiProviderSelection
 
 export interface AppProviderConfig {
   selectedProvider: RuntimeProviderId
   localModel: string
+  ollamaModel: string
   piAi: PiAiProviderConfig
 }
 
@@ -209,7 +219,8 @@ export type StreamChunk =
   | { type: 'error'; error: string }
 
 export interface ModelInfo {
-  /** HuggingFace repo ID — used internally for mlx_lm */
+  provider: 'mlx' | 'ollama'
+  /** HuggingFace repo ID or prefixed Ollama model id. */
   name: string
   /** Short, user-friendly display name */
   label: string
@@ -219,8 +230,39 @@ export interface ModelInfo {
   recommended?: boolean
 }
 
+export const OLLAMA_MODEL_PREFIX = 'ollama:'
+
+export function runtimeModelName(model: string): string {
+  return model.startsWith(OLLAMA_MODEL_PREFIX) ? model.slice(OLLAMA_MODEL_PREFIX.length) : model
+}
+
 export const AVAILABLE_MODELS: ModelInfo[] = [
   {
+    provider: 'ollama',
+    name: 'ollama:gemma4:31b',
+    label: 'Gemma 4 31B',
+    size: 'Ollama',
+    sizeBytes: 0,
+    description: 'Use the locally installed gemma4:31b model through Ollama.'
+  },
+  {
+    provider: 'ollama',
+    name: 'ollama:gemma:7b',
+    label: 'Gemma 7B',
+    size: 'Ollama',
+    sizeBytes: 0,
+    description: 'Use the locally installed gemma:7b model through Ollama.'
+  },
+  {
+    provider: 'ollama',
+    name: 'ollama:qwen2.5:7b',
+    label: 'Qwen 2.5 7B',
+    size: 'Ollama',
+    sizeBytes: 0,
+    description: 'Use the locally installed qwen2.5:7b model through Ollama.'
+  },
+  {
+    provider: 'mlx',
     name: 'mlx-community/gemma-4-e2b-it-4bit',
     label: 'Gemma 4 E2B',
     size: '1.5 GB',
@@ -228,6 +270,7 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
     description: 'Edge-sized. Fast & lightweight. Text + image + audio. Runs on 8GB+ Macs.'
   },
   {
+    provider: 'mlx',
     name: 'mlx-community/gemma-4-e4b-it-4bit',
     label: 'Gemma 4 E4B',
     size: '3 GB',
@@ -236,6 +279,7 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
     recommended: true
   },
   {
+    provider: 'mlx',
     name: 'mlx-community/gemma-4-26b-a4b-it-4bit',
     label: 'Gemma 4 27B MoE',
     size: '16 GB',
@@ -243,6 +287,7 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
     description: 'Mixture-of-Experts (26B, 4B active). 16GB+ RAM recommended.'
   },
   {
+    provider: 'mlx',
     name: 'mlx-community/gemma-4-31b-it-4bit',
     label: 'Gemma 4 31B',
     size: '18 GB',
@@ -251,6 +296,7 @@ export const AVAILABLE_MODELS: ModelInfo[] = [
   }
 ]
 
+export const DEFAULT_OLLAMA_MODEL = 'ollama:gemma4:31b'
 export const DEFAULT_MODEL = 'mlx-community/gemma-4-e4b-it-4bit'
 
 export const DEFAULT_PI_AI_CONFIG: PiAiProviderConfig = {
