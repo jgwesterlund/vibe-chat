@@ -230,6 +230,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     let codeWorkspacePath: string | null = null
     const provider = req.provider ?? defaultProviderSelection(req.model)
     const isPiAi = provider.id === 'pi-ai'
+    const designGuardEnabled = req.mode === 'code' && req.designGuardEnabled !== false
     if (provider.id === 'ollama') {
       await ensureOllamaRunning(provider.model)
     }
@@ -246,8 +247,8 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
       baseMessages.push({
         role: 'system',
         content: isPiAi
-          ? piAiCodeSystemPrompt(wsPath, href, designContext)
-          : codeSystemPrompt(wsPath, href, designContext)
+          ? piAiCodeSystemPrompt(wsPath, href, designContext, designGuardEnabled)
+          : codeSystemPrompt(wsPath, href, designContext, designGuardEnabled)
       })
     } else {
       baseMessages.push({
@@ -282,7 +283,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     let designGuardRepairRounds = 0
 
     const scanDesignGuard = async (): Promise<DesignGuardReport | null> => {
-      if (req.mode !== 'code' || !codeWorkspacePath) return null
+      if (!designGuardEnabled || !codeWorkspacePath) return null
       emit({
         type: 'activity',
         activity: { kind: 'tool', tool: 'design_guard_scan', target: 'workspace' }
@@ -535,10 +536,10 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
               content: `[${hadError ? 'error' : 'ok'}] ${found.name}: ${result}`
             })
             executedAction = true
-            if (isDesignGuardMutatingTool(found.name)) {
+            if (designGuardEnabled && isDesignGuardMutatingTool(found.name)) {
               await scanDesignGuard()
             }
-            if (found.name === 'open_preview') {
+            if (designGuardEnabled && found.name === 'open_preview') {
               const report = designGuardReport ?? (await scanDesignGuard())
               if (report?.findings.length) {
                 const repairQueued = queueDesignGuardRepair(report)
@@ -590,7 +591,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
           emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
           continue // go to round 1
         }
-        if (req.mode === 'code') {
+        if (designGuardEnabled) {
           const report = designGuardReport ?? (await scanDesignGuard())
           if (report && report.findings.length > 0) {
             if (designGuardRepairRounds < DESIGN_GUARD_MAX_REPAIR_ROUNDS) {

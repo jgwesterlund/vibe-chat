@@ -48,6 +48,7 @@ export interface ChatRequest {
   enableTools: boolean
   mode: AgentMode
   design?: ConversationDesign
+  designGuardEnabled?: boolean
 }
 
 export interface DesignCatalogItem {

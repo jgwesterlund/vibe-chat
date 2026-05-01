@@ -467,7 +467,8 @@ export interface CodeDesignContext {
 export function codeSystemPrompt(
   workspacePath: string,
   previewHref: string,
-  designContext?: CodeDesignContext | null
+  designContext?: CodeDesignContext | null,
+  designGuardEnabled = true
 ): string {
   const now = new Date().toISOString()
   const day = new Date().toLocaleDateString('en-US', { weekday: 'long' })
@@ -481,12 +482,17 @@ export function codeSystemPrompt(
     '- Real-feeling copy, not lorem ipsum. Invent brand names and details.',
     '- Make it actually work: click handlers wired, animations smooth, forms usable.',
     '- Fetch real images only when asked; otherwise use CSS/SVG for illustrations.',
-    '',
-    'DESIGN QUALITY GUARD — DEFAULT ON',
-    'Avoid obvious AI-generated UI tells unless the user explicitly asks for them: purple/cyan gradient palettes, gradient text, glow-heavy dark mode, nested cards, side accent borders, icon tiles stacked above headings, everything centered, bounce/elastic motion, pure black/white canvases, and flat type hierarchy.',
-    'Use distinctive typography, intentional color, responsive spacing, stable layouts, accessible contrast, and restrained motion. If a selected DESIGN.md or explicit user request conflicts with this guard, preserve the user direction while keeping the rest of the UI clean.',
     ''
   ]
+
+  if (designGuardEnabled) {
+    lines.push(
+      'DESIGN QUALITY GUARD — DEFAULT ON',
+      'Avoid obvious AI-generated UI tells unless the user explicitly asks for them: purple/cyan gradient palettes, gradient text, glow-heavy dark mode, nested cards, side accent borders, icon tiles stacked above headings, everything centered, bounce/elastic motion, pure black/white canvases, and flat type hierarchy.',
+      'Use distinctive typography, intentional color, responsive spacing, stable layouts, accessible contrast, and restrained motion. If a selected DESIGN.md or explicit user request conflicts with this guard, preserve the user direction while keeping the rest of the UI clean.',
+      ''
+    )
+  }
 
   if (designContext) {
     lines.push(
@@ -570,9 +576,15 @@ export function codeSystemPrompt(
 export function piAiCodeSystemPrompt(
   workspacePath: string,
   previewHref: string,
-  designContext?: CodeDesignContext | null
+  designContext?: CodeDesignContext | null,
+  designGuardEnabled = true
 ): string {
-  const localPrompt = codeSystemPrompt(workspacePath, previewHref, designContext)
+  const localPrompt = codeSystemPrompt(
+    workspacePath,
+    previewHref,
+    designContext,
+    designGuardEnabled
+  )
   return localPrompt.replace(
     "You are Vibe, a local coding agent running entirely on the user's Mac.",
     'You are an AI coding agent in Vibe Chat.'

@@ -43,6 +43,7 @@ interface Conversation {
   mode: AgentMode
   canvasOpen?: boolean
   design?: ConversationDesign
+  designGuardEnabled?: boolean
 }
 
 const STORAGE_KEY = 'vibe-chat:conversations:v2'
@@ -56,7 +57,11 @@ function loadConversations(): Conversation[] {
     if (!localStorage.getItem(STORAGE_KEY)) {
       localStorage.setItem(STORAGE_KEY, raw)
     }
-    return arr.map((c) => ({ ...c, mode: c.mode ?? 'code' }))
+    return arr.map((c) => ({
+      ...c,
+      mode: c.mode ?? 'code',
+      designGuardEnabled: c.designGuardEnabled !== false
+    }))
   } catch {
     return []
   }
@@ -77,7 +82,8 @@ function newConversation(mode: AgentMode = 'code'): Conversation {
     messages: [],
     createdAt: Date.now(),
     mode,
-    canvasOpen: mode === 'code'
+    canvasOpen: mode === 'code',
+    designGuardEnabled: true
   }
 }
 
@@ -154,6 +160,10 @@ export default function Chat({
     updateActive((c) => ({ ...c, canvasOpen: !c.canvasOpen }))
   }
 
+  function toggleDesignGuard(): void {
+    updateActive((c) => ({ ...c, designGuardEnabled: c.designGuardEnabled === false }))
+  }
+
   async function handleSend(input: string): Promise<void> {
     if (!input.trim() || streaming) return
 
@@ -211,7 +221,9 @@ export default function Chat({
                 : { id: 'local-mlx', model },
           enableTools: true,
           mode: conv.mode,
-          design: conv.mode === 'code' ? conv.design : undefined
+          design: conv.mode === 'code' ? conv.design : undefined,
+          designGuardEnabled:
+            conv.mode === 'code' ? conv.designGuardEnabled !== false : undefined
         },
         (chunk: StreamChunk) => {
           if (streamRef.current.abort) return
@@ -329,9 +341,11 @@ export default function Chat({
             mode={activeConversation.mode}
             canvasOpen={!!activeConversation.canvasOpen}
             design={activeConversation.design}
+            designGuardEnabled={activeConversation.designGuardEnabled !== false}
             theme={theme}
             onToggleMode={toggleMode}
             onToggleCanvas={toggleCanvas}
+            onToggleDesignGuard={toggleDesignGuard}
             onToggleTheme={onToggleTheme}
             onSwitchModel={onSwitchModel}
             onProviderConfigChange={onProviderConfigChange}
@@ -438,9 +452,11 @@ function Header({
   mode,
   canvasOpen,
   design,
+  designGuardEnabled,
   theme,
   onToggleMode,
   onToggleCanvas,
+  onToggleDesignGuard,
   onToggleTheme,
   onSwitchModel,
   onProviderConfigChange,
@@ -455,9 +471,11 @@ function Header({
   mode: AgentMode
   canvasOpen: boolean
   design?: ConversationDesign
+  designGuardEnabled: boolean
   theme: ThemeMode
   onToggleMode: () => void
   onToggleCanvas: () => void
+  onToggleDesignGuard: () => void
   onToggleTheme: () => void
   onSwitchModel: (model: string) => void
   onProviderConfigChange: (config: AppProviderConfig) => Promise<void>
@@ -512,6 +530,9 @@ function Header({
             onExtracted={onDesignReady}
             onClear={onClearDesign}
           />
+        )}
+        {mode === 'code' && (
+          <DesignGuardToggle enabled={designGuardEnabled} onToggle={onToggleDesignGuard} />
         )}
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         <div className="relative" ref={pickerRef}>
@@ -1025,6 +1046,36 @@ function ExtractToggle({
       />
       {label}
     </label>
+  )
+}
+
+function DesignGuardToggle({
+  enabled,
+  onToggle
+}: {
+  enabled: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      onClick={onToggle}
+      title="Scan generated UI for common AI design anti-patterns"
+      className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition ${
+        enabled
+          ? 'border-line bg-panel-strong text-fg'
+          : 'border-line bg-panel text-muted hover:bg-panel-strong hover:text-fg'
+      }`}
+    >
+      <span
+        className={`h-2 w-2 rounded-full ${
+          enabled ? 'bg-success' : 'bg-faint'
+        }`}
+      />
+      Design Guard
+    </button>
   )
 }
 
