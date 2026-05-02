@@ -124,6 +124,18 @@ export default function Canvas({ conversationId, streaming, onClose }: Props) {
             Building…
           </span>
         )}
+        {tab === 'preview' && (
+          <IconButton
+            title="Open preview in browser"
+            disabled={!port}
+            onClick={() => window.api.openWorkspacePreview(conversationId, selectedFile ?? undefined)}
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M2.75 4.25h10.5v7.5H2.75z" strokeLinejoin="round" />
+              <path d="M2.75 6.25h10.5M5 4.25v2" strokeLinecap="round" />
+            </svg>
+          </IconButton>
+        )}
         <IconButton title="Refresh preview" onClick={() => setNonce((n) => n + 1)}>
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3" strokeLinecap="round" strokeLinejoin="round" />
@@ -280,17 +292,20 @@ function TabButton({
 function IconButton({
   title,
   onClick,
-  children
+  children,
+  disabled = false
 }: {
   title: string
   onClick: () => void
   children: React.ReactNode
+  disabled?: boolean
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-[rgb(var(--color-on-dark-soft))] transition hover:bg-white/[0.06] hover:text-[rgb(var(--color-on-dark))]"
+      disabled={disabled}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-[rgb(var(--color-on-dark-soft))] transition hover:bg-white/[0.06] hover:text-[rgb(var(--color-on-dark))] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[rgb(var(--color-on-dark-soft))]"
     >
       {children}
     </button>

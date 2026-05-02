@@ -146,6 +146,9 @@ const api = {
   openWorkspace: (conversationId: string): Promise<void> =>
     ipcRenderer.invoke('workspace:open-external', conversationId),
 
+  openWorkspacePreview: (conversationId: string, path?: string): Promise<void> =>
+    ipcRenderer.invoke('workspace:open-preview-external', { conversationId, path }),
+
   workspaceServerPort: (): Promise<number> => ipcRenderer.invoke('workspace:server-port'),
 
   onWorkspaceChanged: (cb: (ev: { conversationId: string }) => void): (() => void) => {
