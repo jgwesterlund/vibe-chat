@@ -71,6 +71,9 @@ interface BuildQuestionnaireSession {
 
 const STORAGE_KEY = 'vibe-chat:conversations:v2'
 const LEGACY_STORAGE_KEY = 'gemma-chat:conversations:v2'
+const CANVAS_MIN_WIDTH = 320
+const CANVAS_INITIAL_WIDTH = 650
+const CANVAS_MAX_WIDTH = 1125
 
 function loadConversations(): Conversation[] {
   try {
@@ -523,7 +526,7 @@ function ResizableCanvas({
   streaming: boolean
   onClose: () => void
 }) {
-  const [width, setWidth] = useState(520)
+  const [width, setWidth] = useState(CANVAS_INITIAL_WIDTH)
   const dragging = useRef(false)
   const startX = useRef(0)
   const startW = useRef(0)
@@ -539,7 +542,7 @@ function ResizableCanvas({
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging.current) return
     const delta = startX.current - e.clientX
-    const next = Math.max(320, Math.min(startW.current + delta, 900))
+    const next = Math.max(CANVAS_MIN_WIDTH, Math.min(startW.current + delta, CANVAS_MAX_WIDTH))
     setWidth(next)
   }, [])
 
