@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { createServer, type Server } from 'http'
+import { createServer, type IncomingMessage, type Server } from 'http'
 import { createReadStream, existsSync } from 'fs'
 import { mkdir, readFile, writeFile, readdir, stat, access, rm, rename } from 'fs/promises'
 import { join, resolve, dirname, extname, relative, sep, delimiter } from 'path'
@@ -60,6 +60,21 @@ const MIME: Record<string, string> = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2'
 }
+
+const TEXT_DOCUMENT_EXTENSIONS = new Set([
+  '.css',
+  '.cjs',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.mjs',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.yaml',
+  '.yml'
+])
 
 const INTERNAL_ROOT_FILES = new Set(['design.md'])
 
@@ -146,6 +161,13 @@ export async function startWorkspaceServer(): Promise<number> {
 
       const ext = extname(target).toLowerCase()
       const mime = MIME[ext] ?? 'application/octet-stream'
+      if (shouldRenderTextDocument(req, ext)) {
+        const body = await readFile(target, 'utf-8')
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(renderTextDocument(rel, body))
+        return
+      }
+
       res.writeHead(200, {
         'content-type': mime,
         'content-length': s.size
@@ -226,12 +248,35 @@ function renderDirList(
 </body></html>`
 }
 
+function renderTextDocument(path: string, content: string): string {
+  const title = escapeHtml(path || 'file')
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>
+  html{color-scheme:dark}
+  body{margin:0;min-height:100vh;background:#11100f;color:#faf9f5;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  pre{box-sizing:border-box;min-height:100vh;margin:0;padding:48px 18px 24px;white-space:pre-wrap;overflow-wrap:anywhere}
+  ::selection{background:#8ab4f8;color:#11100f}
+</style></head><body>
+<pre>${escapeHtml(content)}</pre>
+</body></html>`
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function shouldRenderTextDocument(req: IncomingMessage, ext: string): boolean {
+  if (!TEXT_DOCUMENT_EXTENSIONS.has(ext)) return false
+
+  const fetchDest = String(req.headers['sec-fetch-dest'] ?? '')
+  if (fetchDest === 'document' || fetchDest === 'iframe') return true
+
+  const accept = String(req.headers.accept ?? '')
+  return accept.includes('text/html')
 }
 
 function isInternalRootFile(path: string): boolean {
