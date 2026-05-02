@@ -86,6 +86,7 @@ import {
 } from './designs'
 import {
   DESIGN_GUARD_MAX_REPAIR_ROUNDS,
+  DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR,
   designGuardFinalWarning,
   designGuardRepairPrompt,
   formatDesignGuardScanResult,
@@ -209,7 +210,10 @@ async function handleSetup(model: string): Promise<void> {
 }
 
 const MAX_TOOL_ROUNDS_CHAT = 6
-const MAX_TOOL_ROUNDS_CODE = 40
+const MAX_TOOL_ROUNDS_CODE = 60
+const TOOL_ROUND_GRACE_BUFFER = 2
+const BUILD_TOOL_LIMIT_MESSAGE =
+  'I reached the build tool limit and stopped cleanly with the current workspace saved. Send another message to continue from here.'
 const DESIGN_GUARD_MUTATING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'run_bash'])
 
 function isDesignGuardMutatingTool(name: string): boolean {
@@ -300,6 +304,8 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     const piAiApiKey = provider.id === 'pi-ai' ? await resolvePiAiApiKey(provider.config) : undefined
     let designGuardReport: DesignGuardReport | null = null
     let designGuardRepairRounds = 0
+    let designGuardRepairMutations = 0
+    let designGuardRepairActive = false
 
     const scanDesignGuard = async (): Promise<DesignGuardReport | null> => {
       if (!designGuardEnabled || !codeWorkspacePath) return null
@@ -330,18 +336,39 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
       emit({ type: 'tool_result', id: call.id, result: formatDesignGuardScanResult(report) })
     }
 
-    const queueDesignGuardRepair = (report: DesignGuardReport): boolean => {
-      if (report.findings.length === 0) return false
-      if (designGuardRepairRounds >= DESIGN_GUARD_MAX_REPAIR_ROUNDS) return false
+    const designGuardWarning = (report: DesignGuardReport, reason?: string): string =>
+      designGuardFinalWarning(
+        report,
+        reason
+          ? `Design guard warning: ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} remained. ${reason}`
+          : undefined
+      )
+
+    const queueDesignGuardRepair = (
+      report: DesignGuardReport,
+      remainingToolRounds: number
+    ): 'queued' | 'clean' | 'attempt-limit' | 'round-budget' => {
+      if (report.findings.length === 0) return 'clean'
+      if (designGuardRepairRounds >= DESIGN_GUARD_MAX_REPAIR_ROUNDS) return 'attempt-limit'
+      if (remainingToolRounds <= TOOL_ROUND_GRACE_BUFFER) return 'round-budget'
       designGuardRepairRounds++
+      designGuardRepairMutations = 0
+      designGuardRepairActive = true
       emitDesignGuardResult(report)
       baseMessages.push({
         role: 'user',
         content: designGuardRepairPrompt(report, designGuardRepairRounds)
       })
       emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
-      return true
+      return 'queued'
     }
+
+    const designGuardRepairStopReason = (
+      result: Exclude<ReturnType<typeof queueDesignGuardRepair>, 'queued' | 'clean'>
+    ): string =>
+      result === 'round-budget'
+        ? 'Automatic repair stopped because the build tool budget is nearly exhausted.'
+        : `Automatic repair stopped after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`
 
     emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
 
@@ -555,21 +582,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
               content: `[${hadError ? 'error' : 'ok'}] ${found.name}: ${result}`
             })
             executedAction = true
-            if (designGuardEnabled && isDesignGuardMutatingTool(found.name)) {
-              await scanDesignGuard()
-            }
-            if (designGuardEnabled && found.name === 'open_preview') {
-              const report = designGuardReport ?? (await scanDesignGuard())
-              if (report?.findings.length) {
-                const repairQueued = queueDesignGuardRepair(report)
-                if (!repairQueued) {
-                  emit({ type: 'token', text: designGuardFinalWarning(report) })
-                  emit({ type: 'activity', activity: { kind: 'idle' } })
-                  emit({ type: 'done' })
-                  return
-                }
-              }
-            }
+            const remainingToolRounds = maxRounds - round - 1
             if (livePath) {
               send('file:streaming', {
                 conversationId: req.conversationId,
@@ -577,6 +590,52 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
                 content: lastEmittedContent,
                 done: true
               })
+            }
+            if (designGuardEnabled && isDesignGuardMutatingTool(found.name)) {
+              const report = await scanDesignGuard()
+              if (designGuardRepairActive) {
+                designGuardRepairMutations++
+                if (report?.findings.length === 0) {
+                  designGuardRepairActive = false
+                  designGuardRepairMutations = 0
+                } else if (
+                  report &&
+                  designGuardRepairMutations >= DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR
+                ) {
+                  emit({
+                    type: 'token',
+                    text:
+                      '\n\n' +
+                      designGuardWarning(
+                        report,
+                        `Automatic repair stopped after ${DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR} file-changing actions in one repair pass to avoid a tool loop.`
+                      )
+                  })
+                  emit({ type: 'activity', activity: { kind: 'idle' } })
+                  emit({ type: 'done' })
+                  return
+                }
+              }
+            }
+            if (designGuardEnabled && found.name === 'open_preview') {
+              const report = designGuardReport ?? (await scanDesignGuard())
+              if (report?.findings.length) {
+                const repairQueued = queueDesignGuardRepair(report, remainingToolRounds)
+                if (repairQueued !== 'queued' && repairQueued !== 'clean') {
+                  emit({
+                    type: 'token',
+                    text:
+                      '\n\n' +
+                      designGuardWarning(report, designGuardRepairStopReason(repairQueued))
+                  })
+                  emit({ type: 'activity', activity: { kind: 'idle' } })
+                  emit({ type: 'done' })
+                  return
+                }
+              } else {
+                designGuardRepairActive = false
+                designGuardRepairMutations = 0
+              }
             }
             pendingAction = null
             livePath = null
@@ -613,21 +672,21 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
         if (designGuardEnabled) {
           const report = designGuardReport ?? (await scanDesignGuard())
           if (report && report.findings.length > 0) {
-            if (designGuardRepairRounds < DESIGN_GUARD_MAX_REPAIR_ROUNDS) {
-              if (emittedIdx < buffer.length) {
-                emit({ type: 'token', text: buffer.slice(emittedIdx) })
-              }
-              if (buffer.trim()) {
-                baseMessages.push({ role: 'assistant', content: buffer })
-              }
-              if (queueDesignGuardRepair(report)) continue
-            } else {
-              if (emittedIdx < buffer.length) {
-                emit({ type: 'token', text: buffer.slice(emittedIdx) })
-              }
+            if (emittedIdx < buffer.length) {
+              emit({ type: 'token', text: buffer.slice(emittedIdx) })
+            }
+            if (buffer.trim()) {
+              baseMessages.push({ role: 'assistant', content: buffer })
+            }
+            const repairQueued = queueDesignGuardRepair(report, maxRounds - round - 1)
+            if (repairQueued === 'queued') continue
+            if (repairQueued !== 'clean') {
               emit({
                 type: 'token',
-                text: `${buffer.trim() ? '\n\n' : ''}${designGuardFinalWarning(report)}`
+                text: `${buffer.trim() ? '\n\n' : ''}${designGuardWarning(
+                  report,
+                  designGuardRepairStopReason(repairQueued)
+                )}`
               })
             }
           }
@@ -638,6 +697,11 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
       }
     }
     emit({ type: 'activity', activity: { kind: 'idle' } })
+    if (req.mode === 'code') {
+      emit({ type: 'token', text: `\n\n${BUILD_TOOL_LIMIT_MESSAGE}` })
+      emit({ type: 'done' })
+      return
+    }
     emit({
       type: 'error',
       error: `Reached max tool rounds (${maxRounds}). Ask the model to finish up and try again.`

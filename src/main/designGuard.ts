@@ -8,7 +8,8 @@ import {
   type ImpeccableFinding
 } from 'impeccable'
 
-export const DESIGN_GUARD_MAX_REPAIR_ROUNDS = 8
+export const DESIGN_GUARD_MAX_REPAIR_ROUNDS = 3
+export const DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR = 3
 
 const HTML_EXTENSIONS = new Set(['.html', '.htm'])
 const MAX_PROMPT_FINDINGS = 12
@@ -53,11 +54,13 @@ export async function scanWorkspaceDesignGuard(workspacePath: string): Promise<D
 export function designGuardRepairPrompt(
   report: DesignGuardReport,
   attempt: number,
-  maxAttempts = DESIGN_GUARD_MAX_REPAIR_ROUNDS
+  maxAttempts = DESIGN_GUARD_MAX_REPAIR_ROUNDS,
+  mutationLimit = DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR
 ): string {
   return [
     `Design guard scan found ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} in the generated workspace. Repair attempt ${attempt}/${maxAttempts}.`,
     'Revise the UI now using write_file or edit_file actions. Preserve the requested functionality, content, and any explicit user visual choices.',
+    `Group related fixes together: prefer one write_file per affected file over many tiny edit_file actions. You have at most ${mutationLimit} file-changing actions for this repair pass before automatic repair stops.`,
     'Do not summarize yet. Remove the listed anti-patterns unless the user explicitly required them.',
     '',
     formatDesignGuardFindings(report)
@@ -74,9 +77,10 @@ export function formatDesignGuardScanResult(report: DesignGuardReport): string {
   return formatDesignGuardFindings(report)
 }
 
-export function designGuardFinalWarning(report: DesignGuardReport): string {
+export function designGuardFinalWarning(report: DesignGuardReport, reason?: string): string {
   return [
-    `Design guard warning: ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} remained after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`,
+    reason ??
+      `Design guard warning: ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} remained after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`,
     formatDesignGuardFindings(report, 6)
   ].join('\n')
 }
