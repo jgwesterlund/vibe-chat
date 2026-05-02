@@ -36,6 +36,7 @@ import {
   previewUrl,
   listTree,
   workspaceDir,
+  assertInWorkspace,
   wsWriteFile
 } from './workspace'
 import type {
@@ -1272,6 +1273,23 @@ app.whenReady().then(async () => {
     await cleanupLegacyWorkspaceDesign(conversationId)
     shell.openPath(workspaceDir(conversationId))
   })
+
+  ipcMain.handle(
+    'workspace:open-preview-external',
+    async (_e, { conversationId, path }: { conversationId: string; path?: string }) => {
+      await ensureWorkspace(conversationId)
+      await cleanupLegacyWorkspaceDesign(conversationId)
+
+      const preview = new URL(previewUrl(conversationId))
+      const cleanPath = path?.replace(/^\/+/, '')
+      if (cleanPath) {
+        assertInWorkspace(workspaceDir(conversationId), cleanPath)
+        preview.pathname += cleanPath.split('/').map(encodeURIComponent).join('/')
+      }
+
+      await shell.openExternal(preview.toString())
+    }
+  )
 
   ipcMain.handle('workspace:server-port', async () => getWorkspaceServerPort())
 
