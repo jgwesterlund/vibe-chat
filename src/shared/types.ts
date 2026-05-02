@@ -49,6 +49,68 @@ export interface ChatRequest {
   mode: AgentMode
   design?: ConversationDesign
   designGuardEnabled?: boolean
+  buildBrief?: BuildBrief
+}
+
+export type BuildQuestionKind = 'single' | 'multiple'
+
+export interface BuildQuestionOption {
+  id: string
+  label: string
+  description?: string
+}
+
+export interface BuildQuestion {
+  id: string
+  kind: BuildQuestionKind
+  title: string
+  options: BuildQuestionOption[]
+  otherLabel?: string
+  otherPlaceholder?: string
+}
+
+export interface BuildQuestionAnswer {
+  questionId: string
+  optionIds: string[]
+  otherText?: string
+}
+
+export interface BuildBrief {
+  originalPrompt: string
+  language: string
+  focus: string
+  skipped: boolean
+  questions: BuildQuestion[]
+  answers: BuildQuestionAnswer[]
+  createdAt: number
+}
+
+export interface BuildQuestionnaireCopy {
+  title: string
+  selectOne: string
+  selectMultiple: string
+  otherLabel: string
+  otherPlaceholder: string
+  previous: string
+  next: string
+  skipAll: string
+  submit: string
+  preparing: string
+  errorNotice: string
+}
+
+export interface BuildQuestionnaireGenerationRequest {
+  prompt: string
+  model: string
+  provider?: ChatProviderSelection
+  ui: BuildQuestionnaireCopy
+}
+
+export interface BuildQuestionnaireGenerationResponse {
+  language: string
+  focus: string
+  questions: BuildQuestion[]
+  ui: BuildQuestionnaireCopy
 }
 
 export interface DesignCatalogItem {
