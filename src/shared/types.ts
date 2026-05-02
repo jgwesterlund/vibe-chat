@@ -119,6 +119,7 @@ export interface DesignCatalogItem {
   category: string
   description: string
   sourceUrl: string
+  previewUrl: string
 }
 
 export interface ConversationDesign {
