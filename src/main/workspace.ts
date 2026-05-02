@@ -61,6 +61,8 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2'
 }
 
+const INTERNAL_ROOT_FILES = new Set(['design.md'])
+
 export async function startWorkspaceServer(): Promise<number> {
   if (server) return serverPort
   await mkdir(workspacesRoot(), { recursive: true })
@@ -90,6 +92,11 @@ export async function startWorkspaceServer(): Promise<number> {
       const id = parts[0]
       const root = workspaceDir(id)
       const rel = parts.slice(1).join('/') || ''
+      if (isInternalRootFile(rel)) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not found')
+        return
+      }
       let target: string
       try {
         target = assertInWorkspace(root, rel)
@@ -124,7 +131,9 @@ export async function startWorkspaceServer(): Promise<number> {
           return
         } catch {
           // directory listing
-          const entries = await readdir(target, { withFileTypes: true })
+          const entries = (await readdir(target, { withFileTypes: true })).filter((entry) =>
+            shouldExposeEntry(rel, entry.name)
+          )
           const files = entries.map((e) => ({
             name: e.name,
             kind: e.isDirectory() ? 'dir' : 'file'
@@ -225,6 +234,16 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function isInternalRootFile(path: string): boolean {
+  return !path.includes('/') && INTERNAL_ROOT_FILES.has(path.toLowerCase())
+}
+
+function shouldExposeEntry(prefix: string, name: string): boolean {
+  if (name.startsWith('.')) return false
+  if (name === 'node_modules') return false
+  return !(prefix === '' && INTERNAL_ROOT_FILES.has(name.toLowerCase()))
+}
+
 export interface FileEntry {
   path: string
   kind: 'file' | 'dir'
@@ -246,8 +265,7 @@ export async function listTree(base: string, max = 200): Promise<FileEntry[]> {
       return a.name.localeCompare(b.name)
     })
     for (const e of entries) {
-      if (e.name.startsWith('.')) continue
-      if (e.name === 'node_modules') continue
+      if (!shouldExposeEntry(prefix, e.name)) continue
       const p = prefix ? `${prefix}/${e.name}` : e.name
       if (e.isDirectory()) {
         out.push({ path: p, kind: 'dir' })

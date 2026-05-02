@@ -11,7 +11,7 @@ import type {
   DesignExtractionEvent,
   DesignExtractionRequest
 } from '@shared/types'
-import { wsDeleteFile, wsReadFile, wsWriteFile } from './workspace'
+import { wsDeleteFile, wsReadFile } from './workspace'
 
 const GETDESIGN_MARKDOWN_BASE = 'https://getdesign.md/design-md'
 const GITHUB_RAW_BASE =
@@ -21,6 +21,10 @@ const DESIGN_FILE = 'DESIGN.md'
 const FETCH_TIMEOUT_MS = 15_000
 const EXTRACT_TIMEOUT_MS = 4 * 60_000
 const require = createRequire(import.meta.url)
+const MANAGED_WORKSPACE_DESIGN_MARKERS = [
+  '<!-- Installed by Vibe Chat from getdesign.md.',
+  '<!-- Installed by Vibe Chat from a live site extraction.'
+]
 
 interface ExtractionJob {
   process: ChildProcess
@@ -40,8 +44,8 @@ export async function installDesign(
   slug: string
 ): Promise<ConversationDesign> {
   const item = requireDesign(slug)
-  const markdown = await loadDesignMarkdown(item)
-  await wsWriteFile(conversationId, DESIGN_FILE, formatWorkspaceDesignMarkdown(item, markdown))
+  await loadDesignMarkdown(item)
+  await cleanupLegacyWorkspaceDesign(conversationId)
   return {
     slug: item.slug,
     name: item.name,
@@ -81,61 +85,16 @@ export async function installCustomDesign(
   customId: string
 ): Promise<ConversationDesign> {
   const design = await readCustomDesignMetadata(customId)
-  const markdown = await readFile(customDesignMarkdownPath(customId), 'utf-8')
-  await wsWriteFile(conversationId, DESIGN_FILE, formatWorkspaceCustomDesignMarkdown(design, markdown))
+  await readFile(customDesignMarkdownPath(customId), 'utf-8')
+  await cleanupLegacyWorkspaceDesign(conversationId)
   return { ...design, installedAt: Date.now() }
 }
 
 export async function clearInstalledDesign(
   conversationId: string,
-  design?: ConversationDesign | string
+  _design?: ConversationDesign | string
 ): Promise<DesignClearResult> {
-  const slug = typeof design === 'string' ? design : design?.slug
-  const source = typeof design === 'string' ? 'catalog' : (design?.source ?? 'catalog')
-  const item = source === 'catalog' && slug ? getDesignBySlug(slug) : undefined
-  if (source === 'catalog' && slug && !item) {
-    return { removed: false, reason: 'Unknown catalog design.' }
-  }
-
-  let current: string
-  try {
-    current = await wsReadFile(conversationId, DESIGN_FILE)
-  } catch {
-    return { removed: false, reason: 'No DESIGN.md file is installed.' }
-  }
-
-  let expected: string | null = null
-  if (source === 'extracted') {
-    const customId = typeof design === 'string' ? undefined : design?.customId
-    if (!customId) return { removed: false, reason: 'No extracted design id was provided.' }
-    try {
-      const customDesign = await readCustomDesignMetadata(customId)
-      const markdown = await readFile(customDesignMarkdownPath(customId), 'utf-8')
-      expected = formatWorkspaceCustomDesignMarkdown(customDesign, markdown)
-    } catch {
-      return {
-        removed: false,
-        reason: 'Stored extracted design is missing, so DESIGN.md was left untouched.'
-      }
-    }
-  } else {
-    if (!item) return { removed: false, reason: 'No design slug was provided.' }
-    const cached = await readCachedDesign(item.slug)
-    if (!cached) {
-      return { removed: false, reason: 'Cached design is missing, so DESIGN.md was left untouched.' }
-    }
-    expected = formatWorkspaceDesignMarkdown(item, cached)
-  }
-
-  if (normalize(current) !== normalize(expected)) {
-    return {
-      removed: false,
-      reason: 'DESIGN.md has local edits, so it was left untouched.'
-    }
-  }
-
-  await wsDeleteFile(conversationId, DESIGN_FILE)
-  return { removed: true }
+  return cleanupLegacyWorkspaceDesign(conversationId)
 }
 
 export async function readDesignContext(
@@ -143,24 +102,55 @@ export async function readDesignContext(
   design: ConversationDesign,
   maxChars = 28_000
 ): Promise<string | null> {
-  let markdown: string
+  await cleanupLegacyWorkspaceDesign(conversationId)
+
+  let markdown: string | null = null
   try {
-    markdown = await wsReadFile(conversationId, DESIGN_FILE)
+    if ((design.source ?? 'catalog') === 'extracted' && design.customId) {
+      const customDesign = await readCustomDesignMetadata(design.customId)
+      const raw = await readFile(customDesignMarkdownPath(design.customId), 'utf-8')
+      markdown = formatCustomDesignMarkdown(customDesign, raw)
+    } else {
+      const item = getDesignBySlug(design.slug)
+      if (!item) return null
+      const raw = await loadDesignMarkdown(item, { preferCached: true })
+      markdown = formatCatalogDesignMarkdown(item, raw)
+    }
   } catch {
-    try {
-      if ((design.source ?? 'catalog') === 'extracted' && design.customId) {
-        await installCustomDesign(conversationId, design.customId)
-      } else {
-        await installDesign(conversationId, design.slug)
-      }
-      markdown = await wsReadFile(conversationId, DESIGN_FILE)
-    } catch {
-      return null
+    return null
+  }
+
+  if (!markdown) return null
+  if (markdown.length <= maxChars) return markdown
+  return markdown.slice(0, maxChars) + '\n\n[DESIGN.md truncated for prompt length]'
+}
+
+export async function cleanupLegacyWorkspaceDesign(
+  conversationId: string
+): Promise<DesignClearResult> {
+  let current: string
+  try {
+    current = await wsReadFile(conversationId, DESIGN_FILE)
+  } catch {
+    return { removed: false, reason: 'No legacy workspace DESIGN.md file exists.' }
+  }
+
+  if (!isManagedWorkspaceDesign(current)) {
+    return {
+      removed: false,
+      reason: 'DESIGN.md was not created by Vibe Chat, so it was left untouched.'
     }
   }
 
-  if (markdown.length <= maxChars) return markdown
-  return markdown.slice(0, maxChars) + '\n\n[DESIGN.md truncated for prompt length]'
+  try {
+    await wsDeleteFile(conversationId, DESIGN_FILE)
+    return { removed: true }
+  } catch (e) {
+    return {
+      removed: false,
+      reason: `Could not remove legacy workspace DESIGN.md: ${(e as Error).message}`
+    }
+  }
 }
 
 export function startDesignExtraction(
@@ -274,11 +264,7 @@ export function startDesignExtraction(
         customId: jobId
       }
       await writeFile(customDesignMetadataPath(jobId), JSON.stringify(design, null, 2), 'utf-8')
-      await wsWriteFile(
-        request.conversationId,
-        DESIGN_FILE,
-        formatWorkspaceCustomDesignMarkdown(design, markdown)
-      )
+      await cleanupLegacyWorkspaceDesign(request.conversationId)
       emit({ type: 'done', jobId, design })
     } catch (e) {
       emit({ type: 'error', jobId, error: (e as Error).message })
@@ -310,7 +296,15 @@ function requireDesign(slug: string): DesignCatalogItem {
   return item
 }
 
-async function loadDesignMarkdown(item: DesignCatalogItem): Promise<string> {
+async function loadDesignMarkdown(
+  item: DesignCatalogItem,
+  options: { preferCached?: boolean } = {}
+): Promise<string> {
+  if (options.preferCached) {
+    const cached = await readCachedDesign(item.slug)
+    if (cached) return cached
+  }
+
   try {
     const remote = await fetchDesignMarkdown(item)
     await writeCachedDesign(item.slug, remote)
@@ -404,7 +398,7 @@ async function writeCachedDesign(slug: string, content: string): Promise<void> {
   await rename(tmp, target)
 }
 
-function formatWorkspaceDesignMarkdown(item: DesignCatalogItem, markdown: string): string {
+function formatCatalogDesignMarkdown(item: DesignCatalogItem, markdown: string): string {
   return [
     '<!-- Installed by Vibe Chat from getdesign.md.',
     `Design: ${item.name} (${item.slug}).`,
@@ -415,7 +409,7 @@ function formatWorkspaceDesignMarkdown(item: DesignCatalogItem, markdown: string
   ].join('\n')
 }
 
-function formatWorkspaceCustomDesignMarkdown(
+function formatCustomDesignMarkdown(
   design: ConversationDesign,
   markdown: string
 ): string {
@@ -431,6 +425,11 @@ function formatWorkspaceCustomDesignMarkdown(
 
 function normalize(value: string): string {
   return value.replace(/\r\n/g, '\n').trim()
+}
+
+function isManagedWorkspaceDesign(markdown: string): boolean {
+  const normalized = normalize(markdown).trimStart()
+  return MANAGED_WORKSPACE_DESIGN_MARKERS.some((marker) => normalized.startsWith(marker))
 }
 
 function customDesignsRoot(): string {

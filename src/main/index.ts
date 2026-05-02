@@ -70,6 +70,7 @@ import {
 } from './auth/piAiAuth'
 import {
   cancelDesignExtraction,
+  cleanupLegacyWorkspaceDesign,
   clearInstalledDesign,
   installDesign,
   installCustomDesign,
@@ -237,6 +238,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
 
     if (req.mode === 'code') {
       const wsPath = await ensureWorkspace(req.conversationId)
+      await cleanupLegacyWorkspaceDesign(req.conversationId)
       codeWorkspacePath = wsPath
       const href = previewUrl(req.conversationId)
       const designMarkdown = req.design
@@ -945,6 +947,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('workspace:info', async (_e, conversationId: string) => {
     await ensureWorkspace(conversationId)
+    await cleanupLegacyWorkspaceDesign(conversationId)
     return {
       conversationId,
       path: workspaceDir(conversationId),
@@ -954,11 +957,13 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('workspace:list', async (_e, conversationId: string) => {
     const base = await ensureWorkspace(conversationId)
+    await cleanupLegacyWorkspaceDesign(conversationId)
     return listTree(base, 300)
   })
 
   ipcMain.handle('workspace:open-external', async (_e, conversationId: string) => {
     await ensureWorkspace(conversationId)
+    await cleanupLegacyWorkspaceDesign(conversationId)
     shell.openPath(workspaceDir(conversationId))
   })
 
