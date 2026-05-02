@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type {
   ChatRequest,
   AppProviderConfig,
+  BuildQuestionnaireGenerationRequest,
+  BuildQuestionnaireGenerationResponse,
   ConversationDesign,
   DesignCatalogItem,
   DesignClearResult,
@@ -67,6 +69,11 @@ const api = {
     request: DesignExtractionRequest
   ): Promise<DesignExtractionStarted> =>
     ipcRenderer.invoke('designs:extract:start', request),
+
+  generateBuildQuestions: (
+    request: BuildQuestionnaireGenerationRequest
+  ): Promise<BuildQuestionnaireGenerationResponse> =>
+    ipcRenderer.invoke('questionnaire:generate', request),
 
   cancelDesignExtraction: (jobId: string): Promise<{ cancelled: boolean }> =>
     ipcRenderer.invoke('designs:extract:cancel', jobId),
