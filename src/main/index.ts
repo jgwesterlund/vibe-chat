@@ -306,6 +306,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     let designGuardRepairRounds = 0
     let designGuardRepairMutations = 0
     let designGuardRepairActive = false
+    let designGuardAutoRepairPaused = false
 
     const scanDesignGuard = async (): Promise<DesignGuardReport | null> => {
       if (!designGuardEnabled || !codeWorkspacePath) return null
@@ -340,15 +341,31 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
       designGuardFinalWarning(
         report,
         reason
-          ? `Design guard warning: ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} remained. ${reason}`
+          ? `Design guard warning: ${report.findings.length} design issue${report.findings.length === 1 ? '' : 's'} remained. ${reason}`
           : undefined
       )
+
+    const pauseDesignGuardAutoRepair = (reason: string): void => {
+      if (designGuardAutoRepairPaused) return
+      designGuardAutoRepairPaused = true
+      designGuardRepairActive = false
+      designGuardRepairMutations = 0
+      baseMessages.push({
+        role: 'user',
+        content: [
+          `Design guard automatic cleanup is paused for the rest of this turn: ${reason}`,
+          'Do not continue making design-only cleanup edits for the same findings.',
+          'Continue the user-requested build normally, use preview if useful, and finish with a concise summary. Do not mention this internal pause unless the user asks.'
+        ].join('\n')
+      })
+    }
 
     const queueDesignGuardRepair = (
       report: DesignGuardReport,
       remainingToolRounds: number
-    ): 'queued' | 'clean' | 'attempt-limit' | 'round-budget' => {
+    ): 'queued' | 'clean' | 'paused' | 'attempt-limit' | 'round-budget' => {
       if (report.findings.length === 0) return 'clean'
+      if (designGuardAutoRepairPaused) return 'paused'
       if (designGuardRepairRounds >= DESIGN_GUARD_MAX_REPAIR_ROUNDS) return 'attempt-limit'
       if (remainingToolRounds <= TOOL_ROUND_GRACE_BUFFER) return 'round-budget'
       designGuardRepairRounds++
@@ -364,11 +381,11 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
     }
 
     const designGuardRepairStopReason = (
-      result: Exclude<ReturnType<typeof queueDesignGuardRepair>, 'queued' | 'clean'>
+      result: Exclude<ReturnType<typeof queueDesignGuardRepair>, 'queued' | 'clean' | 'paused'>
     ): string =>
       result === 'round-budget'
-        ? 'Automatic repair stopped because the build tool budget is nearly exhausted.'
-        : `Automatic repair stopped after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`
+        ? 'Automatic design cleanup paused because the build tool budget is nearly exhausted.'
+        : `Automatic design cleanup paused after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`
 
     emit({ type: 'activity', activity: { kind: 'thinking', chars: 0 } })
 
@@ -602,18 +619,9 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
                   report &&
                   designGuardRepairMutations >= DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR
                 ) {
-                  emit({
-                    type: 'token',
-                    text:
-                      '\n\n' +
-                      designGuardWarning(
-                        report,
-                        `Automatic repair stopped after ${DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR} file-changing actions in one repair pass to avoid a tool loop.`
-                      )
-                  })
-                  emit({ type: 'activity', activity: { kind: 'idle' } })
-                  emit({ type: 'done' })
-                  return
+                  pauseDesignGuardAutoRepair(
+                    `Automatic design cleanup reached ${DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR} file-changing actions in one repair pass.`
+                  )
                 }
               }
             }
@@ -621,16 +629,12 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
               const report = designGuardReport ?? (await scanDesignGuard())
               if (report?.findings.length) {
                 const repairQueued = queueDesignGuardRepair(report, remainingToolRounds)
-                if (repairQueued !== 'queued' && repairQueued !== 'clean') {
-                  emit({
-                    type: 'token',
-                    text:
-                      '\n\n' +
-                      designGuardWarning(report, designGuardRepairStopReason(repairQueued))
-                  })
-                  emit({ type: 'activity', activity: { kind: 'idle' } })
-                  emit({ type: 'done' })
-                  return
+                if (
+                  repairQueued !== 'queued' &&
+                  repairQueued !== 'clean' &&
+                  repairQueued !== 'paused'
+                ) {
+                  pauseDesignGuardAutoRepair(designGuardRepairStopReason(repairQueued))
                 }
               } else {
                 designGuardRepairActive = false
@@ -680,7 +684,7 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
             }
             const repairQueued = queueDesignGuardRepair(report, maxRounds - round - 1)
             if (repairQueued === 'queued') continue
-            if (repairQueued !== 'clean') {
+            if (repairQueued !== 'clean' && repairQueued !== 'paused') {
               emit({
                 type: 'token',
                 text: `${buffer.trim() ? '\n\n' : ''}${designGuardWarning(

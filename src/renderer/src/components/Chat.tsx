@@ -1186,7 +1186,7 @@ function DesignGuardToggle({
       role="switch"
       aria-checked={enabled}
       onClick={onToggle}
-      title="Scan generated UI for common AI design anti-patterns"
+      title="Scan generated UI for common design issues"
       className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition ${
         enabled
           ? 'border-line bg-panel-strong text-fg'
