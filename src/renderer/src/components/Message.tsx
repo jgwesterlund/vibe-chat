@@ -208,6 +208,8 @@ function toolVerb(name: string): string {
       return 'Running'
     case 'open_preview':
       return 'Revealing preview'
+    case 'design_guard_scan':
+      return 'Checking design'
     case 'web_search':
       return 'Searching'
     case 'fetch_url':
