@@ -58,10 +58,10 @@ export function designGuardRepairPrompt(
   mutationLimit = DESIGN_GUARD_MAX_MUTATIONS_PER_REPAIR
 ): string {
   return [
-    `Design guard scan found ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} in the generated workspace. Repair attempt ${attempt}/${maxAttempts}.`,
+    `Design guard scan found ${report.findings.length} design issue${report.findings.length === 1 ? '' : 's'} in the generated workspace. Repair attempt ${attempt}/${maxAttempts}.`,
     'Revise the UI now using write_file or edit_file actions. Preserve the requested functionality, content, and any explicit user visual choices.',
-    `Group related fixes together: prefer one write_file per affected file over many tiny edit_file actions. You have at most ${mutationLimit} file-changing actions for this repair pass before automatic repair stops.`,
-    'Do not summarize yet. Remove the listed anti-patterns unless the user explicitly required them.',
+    `Group related fixes together: prefer one write_file per affected file over many tiny edit_file actions. You have at most ${mutationLimit} file-changing actions for this repair pass before automatic design cleanup pauses.`,
+    'Do not summarize yet. Remove the listed design issues unless the user explicitly required them.',
     '',
     formatDesignGuardFindings(report)
   ].join('\n')
@@ -70,8 +70,8 @@ export function designGuardRepairPrompt(
 export function formatDesignGuardScanResult(report: DesignGuardReport): string {
   if (report.findings.length === 0) {
     return report.errors.length
-      ? `Design guard found no anti-patterns, but ${report.errors.length} file scan failed.`
-      : 'Design guard found no anti-patterns.'
+      ? `Design guard found no design issues, but ${report.errors.length} file scan failed.`
+      : 'Design guard found no design issues.'
   }
 
   return formatDesignGuardFindings(report)
@@ -80,7 +80,7 @@ export function formatDesignGuardScanResult(report: DesignGuardReport): string {
 export function designGuardFinalWarning(report: DesignGuardReport, reason?: string): string {
   return [
     reason ??
-      `Design guard warning: ${report.findings.length} Impeccable anti-pattern${report.findings.length === 1 ? '' : 's'} remained after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`,
+      `Design guard warning: ${report.findings.length} design issue${report.findings.length === 1 ? '' : 's'} remained after ${DESIGN_GUARD_MAX_REPAIR_ROUNDS} repair attempts.`,
     formatDesignGuardFindings(report, 6)
   ].join('\n')
 }
@@ -140,7 +140,7 @@ function formatDesignGuardFindings(
 ): string {
   const lines = report.findings.slice(0, maxFindings).map((finding) => {
     const location = finding.line ? `${finding.path}:${finding.line}` : finding.path
-    return `- ${location} [${finding.antipattern}] ${finding.snippet} — ${finding.description}`
+    return `- ${location} [${finding.name}] ${finding.snippet} — ${finding.description}`
   })
 
   const remaining = report.findings.length - lines.length
