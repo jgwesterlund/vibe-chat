@@ -26,6 +26,7 @@ import {
 } from '@shared/types'
 import {
   BUILD_QUESTIONNAIRE_COPY,
+  createFallbackBuildQuestionnaire,
   createBuildBrief,
   detectPromptLanguage,
   shouldTriggerBuildQuestions
@@ -251,9 +252,22 @@ export default function Chat({
           : current
       )
     } catch {
+      const fallback = createFallbackBuildQuestionnaire(
+        input,
+        BUILD_QUESTIONNAIRE_COPY,
+        'Question generation IPC failed.'
+      )
       setQuestionnaire((current) =>
         current?.prompt === input
-          ? { ...current, loading: false, error: current.ui.errorNotice }
+          ? {
+              ...current,
+              language: fallback.language,
+              focus: fallback.focus,
+              questions: fallback.questions,
+              ui: fallback.ui,
+              loading: false,
+              error: undefined
+            }
           : current
       )
     }

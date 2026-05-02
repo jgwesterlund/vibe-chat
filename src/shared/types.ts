@@ -111,6 +111,8 @@ export interface BuildQuestionnaireGenerationResponse {
   focus: string
   questions: BuildQuestion[]
   ui: BuildQuestionnaireCopy
+  source?: 'model' | 'fallback' | 'mixed'
+  warning?: string
 }
 
 export interface DesignCatalogItem {
