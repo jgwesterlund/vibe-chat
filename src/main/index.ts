@@ -40,8 +40,6 @@ import {
   wsWriteFile
 } from './workspace'
 import type {
-  BuildQuestion,
-  BuildQuestionnaireCopy,
   BuildQuestionnaireGenerationRequest,
   BuildQuestionnaireGenerationResponse,
   ChatRequest,
@@ -64,7 +62,11 @@ import {
   readProviderConfig,
   writeProviderConfig
 } from './providers/config'
-import { detectPromptLanguage } from '../shared/buildQuestionnaire'
+import {
+  createFallbackBuildQuestionnaire,
+  normalizeBuildQuestionnaireGeneration,
+  parseQuestionGenerationJson
+} from '../shared/buildQuestionnaire'
 import {
   clearPiAiCredentials,
   coerceOAuthPrompt,
@@ -782,8 +784,6 @@ async function generateBuildQuestionnaire(
   req: BuildQuestionnaireGenerationRequest
 ): Promise<BuildQuestionnaireGenerationResponse> {
   const provider = req.provider ?? defaultProviderSelection(req.model)
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), QUESTION_GENERATION_TIMEOUT_MS)
   const messages: MLXChatMessage[] = [
     {
       role: 'system',
@@ -829,13 +829,16 @@ async function generateBuildQuestionnaire(
     }
   ]
 
-  if (provider.id === 'ollama') {
-    await ensureOllamaRunning(provider.model)
-  }
-
-  const piAiApiKey = provider.id === 'pi-ai' ? await resolvePiAiApiKey(provider.config) : undefined
-  let text = ''
   try {
+    if (provider.id === 'ollama') {
+      await ensureOllamaRunning(provider.model)
+    }
+
+    const piAiApiKey = provider.id === 'pi-ai' ? await resolvePiAiApiKey(provider.config) : undefined
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), QUESTION_GENERATION_TIMEOUT_MS)
+    let text = ''
+
     const chunks =
       provider.id === 'pi-ai'
         ? streamPiAi({
@@ -859,134 +862,58 @@ async function generateBuildQuestionnaire(
               signal: controller.signal
             })
 
-    for await (const chunk of chunks) {
-      if (chunk.content) {
-        text += chunk.content
-        if (text.length > QUESTION_GENERATION_MAX_CHARS) {
-          throw new Error('Question generation response was too large.')
+    try {
+      for await (const chunk of chunks) {
+        if (chunk.content) {
+          text += chunk.content
+          if (text.length > QUESTION_GENERATION_MAX_CHARS) {
+            throw new Error('Question generation response was too large.')
+          }
         }
+        if (chunk.done) break
       }
-      if (chunk.done) break
+    } finally {
+      clearTimeout(timeout)
     }
-  } finally {
-    clearTimeout(timeout)
-  }
 
-  const parsed = parseQuestionGenerationJson(text)
-  const questions = validateGeneratedQuestions(parsed.questions)
-  const ui = validateGeneratedUi(req.ui, parsed.ui)
-  const language =
-    typeof parsed.language === 'string' && parsed.language.trim()
-      ? parsed.language.trim().slice(0, 24)
-      : detectPromptLanguage(req.prompt)
-  const focus = slugishString(parsed.focus, 'custom-build-questionnaire')
-
-  return { language, focus, questions, ui }
-}
-
-function parseQuestionGenerationJson(text: string): Record<string, unknown> {
-  const trimmed = text.trim()
-  try {
-    return JSON.parse(trimmed) as Record<string, unknown>
-  } catch {
-    const start = trimmed.indexOf('{')
-    const end = trimmed.lastIndexOf('}')
-    if (start < 0 || end <= start) throw new Error('Question generation did not return JSON.')
-    return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>
+    const parsed = parseQuestionGenerationJson(text)
+    const normalized = normalizeBuildQuestionnaireGeneration({
+      prompt: req.prompt,
+      ui: req.ui,
+      parsed
+    })
+    if (normalized.warning) {
+      logQuestionnaireFallback(provider.id, normalized.warning)
+    }
+    return normalized
+  } catch (e) {
+    const warning = questionnaireFailureWarning(e)
+    logQuestionnaireFallback(provider.id, warning)
+    return createFallbackBuildQuestionnaire(req.prompt, req.ui, warning)
   }
 }
 
-function validateGeneratedQuestions(generated: unknown): BuildQuestion[] {
-  if (!Array.isArray(generated)) throw new Error('Generated questions must be an array.')
-  if (generated.length !== 5) throw new Error('Generated questionnaire must contain exactly five questions.')
-
-  const questionIds = new Set<string>()
-  return generated.map((candidate, index) => {
-    if (!isObject(candidate)) throw new Error(`Question ${index + 1} is invalid.`)
-    const id = kebabId(candidate.id, `question-${index + 1}`)
-    if (questionIds.has(id)) throw new Error(`Duplicate question id: ${id}`)
-    questionIds.add(id)
-    const kind = candidate.kind === 'multiple' ? 'multiple' : candidate.kind === 'single' ? 'single' : null
-    if (!kind) throw new Error(`Question ${id} has invalid kind.`)
-    const options = validateGeneratedOptions(id, candidate.options)
-    return {
-      id,
-      kind,
-      title: nonEmptyString(candidate.title, `Question ${index + 1}`),
-      options,
-      otherLabel: optionalString(candidate.otherLabel, 'Other'),
-      otherPlaceholder: optionalString(candidate.otherPlaceholder, 'Describe another direction')
-    }
+function logQuestionnaireFallback(providerId: string, warning: string): void {
+  console.warn('[questionnaire] using fallback', {
+    provider: providerId,
+    reason: sanitizeQuestionnaireWarning(warning)
   })
 }
 
-function validateGeneratedOptions(
-  questionId: string,
-  generated: unknown
-): BuildQuestion['options'] {
-  if (!Array.isArray(generated)) throw new Error(`Options missing for ${questionId}.`)
-  if (generated.length < 3 || generated.length > 5) {
-    throw new Error(`Question ${questionId} must have 3 to 5 options.`)
+function questionnaireFailureWarning(error: unknown): string {
+  if ((error as Error | undefined)?.name === 'AbortError') {
+    return 'Question generation timed out.'
   }
-  const optionIds = new Set<string>()
-  return generated.map((candidate, index) => {
-    if (!isObject(candidate)) throw new Error(`Option ${index + 1} is invalid for ${questionId}.`)
-    const id = kebabId(candidate.id, `option-${index + 1}`)
-    if (optionIds.has(id)) throw new Error(`Duplicate option id: ${id}`)
-    optionIds.add(id)
-    return {
-      id,
-      label: nonEmptyString(candidate.label, `Option ${index + 1}`),
-      description: optionalString(candidate.description)
-    }
-  })
+
+  const message = (error as Error | undefined)?.message?.trim()
+  return message ? sanitizeQuestionnaireWarning(message) : 'Question generation failed.'
 }
 
-function validateGeneratedUi(
-  source: BuildQuestionnaireCopy,
-  generated: unknown
-): BuildQuestionnaireCopy {
-  if (!isObject(generated)) return source
-  return {
-    title: nonEmptyString(generated.title, source.title),
-    selectOne: nonEmptyString(generated.selectOne, source.selectOne),
-    selectMultiple: nonEmptyString(generated.selectMultiple, source.selectMultiple),
-    otherLabel: nonEmptyString(generated.otherLabel, source.otherLabel),
-    otherPlaceholder: nonEmptyString(generated.otherPlaceholder, source.otherPlaceholder),
-    previous: nonEmptyString(generated.previous, source.previous),
-    next: nonEmptyString(generated.next, source.next),
-    skipAll: nonEmptyString(generated.skipAll, source.skipAll),
-    submit: nonEmptyString(generated.submit, source.submit),
-    preparing: nonEmptyString(generated.preparing, source.preparing),
-    errorNotice: nonEmptyString(generated.errorNotice, source.errorNotice)
-  }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function nonEmptyString(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.trim() ? value.trim() : fallback
-}
-
-function optionalString(value: unknown, fallback?: string): string | undefined {
-  if (typeof value === 'string' && value.trim()) return value.trim()
-  return fallback
-}
-
-function kebabId(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') return fallback
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return normalized || fallback
-}
-
-function slugishString(value: unknown, fallback: string): string {
-  return kebabId(value, fallback).slice(0, 80) || fallback
+function sanitizeQuestionnaireWarning(message: string): string {
+  return message
+    .replace(/sk-[A-Za-z0-9_-]+/g, '[redacted]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .slice(0, 180)
 }
 
 app.whenReady().then(async () => {
