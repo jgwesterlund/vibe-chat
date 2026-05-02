@@ -1154,8 +1154,10 @@ function DesignMenu({
       {previewDesign && (
         <DesignPreviewDialog
           design={previewDesign}
+          designs={designs}
           installing={busySlug === previewDesign.slug}
           onUse={() => selectDesign(previewDesign.slug)}
+          onPreviewDesignChange={setPreviewDesign}
           onClose={() => setPreviewDesign(null)}
         />
       )}
@@ -1167,18 +1169,23 @@ type DesignPreviewStatus = 'loading' | 'ready' | 'failed'
 
 function DesignPreviewDialog({
   design,
+  designs,
   installing,
   onUse,
+  onPreviewDesignChange,
   onClose
 }: {
   design: DesignCatalogItem
+  designs: DesignCatalogItem[]
   installing: boolean
   onUse: () => Promise<void>
+  onPreviewDesignChange: (design: DesignCatalogItem) => void
   onClose: () => void
 }) {
   const [status, setStatus] = useState<DesignPreviewStatus>('loading')
   const titleId = `design-preview-${design.slug}`
   const ogImageUrl = `https://getdesign.md/api/og/${encodeURIComponent(design.slug)}/design-md`
+  const previewChoices = designs.length ? designs : [design]
 
   useEffect(() => {
     setStatus('loading')
@@ -1244,50 +1251,118 @@ function DesignPreviewDialog({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 bg-code">
-          {status === 'failed' ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-8 text-center">
-              <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl shadow-black/30">
-                <img
-                  src={ogImageUrl}
-                  alt={`${design.name} design preview`}
-                  className="block h-auto w-full"
-                />
-              </div>
-              <div className="max-w-md text-[13px] leading-relaxed text-[rgb(var(--color-on-dark-soft))]">
-                The live preview did not finish loading in this window. The design details page is still available.
-              </div>
-              <a
-                href={design.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-[12px] font-medium text-[rgb(var(--color-on-dark))] transition hover:bg-white/15"
-              >
-                Open details
-              </a>
-            </div>
-          ) : (
-            <div className="relative h-full">
-              <iframe
-                src={design.previewUrl}
-                title={`${design.name} design preview`}
-                sandbox="allow-same-origin"
-                referrerPolicy="no-referrer"
-                onLoad={() => setStatus('ready')}
-                onError={() => setStatus('failed')}
-                className="h-full w-full border-0 bg-white"
-              />
-              {status === 'loading' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-code text-[rgb(var(--color-on-dark-soft))]">
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-action" />
-                  <div className="text-[12px]">Loading design preview...</div>
+        <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)]">
+          <DesignPreviewSidebar
+            designs={previewChoices}
+            activeSlug={design.slug}
+            onSelect={onPreviewDesignChange}
+          />
+
+          <div className="min-h-0 bg-code">
+            {status === 'failed' ? (
+              <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+                <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl shadow-black/30">
+                  <img
+                    src={ogImageUrl}
+                    alt={`${design.name} design preview`}
+                    className="block h-auto w-full"
+                  />
                 </div>
-              )}
-            </div>
-          )}
+                <div className="max-w-md text-[13px] leading-relaxed text-[rgb(var(--color-on-dark-soft))]">
+                  The live preview did not finish loading in this window. The design details page is still available.
+                </div>
+                <a
+                  href={design.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-[12px] font-medium text-[rgb(var(--color-on-dark))] transition hover:bg-white/15"
+                >
+                  Open details
+                </a>
+              </div>
+            ) : (
+              <div className="relative h-full">
+                <iframe
+                  key={design.previewUrl}
+                  src={design.previewUrl}
+                  title={`${design.name} design preview`}
+                  sandbox="allow-same-origin"
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setStatus('ready')}
+                  onError={() => setStatus('failed')}
+                  className="h-full w-full border-0 bg-white"
+                />
+                {status === 'loading' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-code text-[rgb(var(--color-on-dark-soft))]">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-action" />
+                    <div className="text-[12px]">Loading design preview...</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function DesignPreviewSidebar({
+  designs,
+  activeSlug,
+  onSelect
+}: {
+  designs: DesignCatalogItem[]
+  activeSlug: string
+  onSelect: (design: DesignCatalogItem) => void
+}) {
+  const activeRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [activeSlug])
+
+  return (
+    <aside className="flex min-h-0 flex-col border-r border-line bg-panel">
+      <div className="flex h-11 items-center justify-between border-b border-line px-3">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-faint">
+          Designs
+        </div>
+        <div className="text-[10.5px] tabular-nums text-faint">{designs.length}</div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {designs.map((candidate) => {
+          const active = candidate.slug === activeSlug
+          return (
+            <button
+              key={candidate.slug}
+              ref={active ? activeRef : undefined}
+              type="button"
+              onClick={() => !active && onSelect(candidate)}
+              className={`mb-1 w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                active
+                  ? 'border-action bg-control-hover text-fg'
+                  : 'border-transparent text-muted hover:border-line hover:bg-control hover:text-fg'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                  {candidate.name}
+                </span>
+                {active && (
+                  <span className="shrink-0 rounded-full bg-action px-1.5 py-[1px] text-[8.5px] font-medium uppercase tracking-wider text-action-fg">
+                    viewing
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 truncate text-[10.5px] text-faint">
+                {candidate.category}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </aside>
   )
 }
 
