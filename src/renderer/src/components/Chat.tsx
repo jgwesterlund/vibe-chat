@@ -732,6 +732,7 @@ function DesignMenu({
   const [extractResponsive, setExtractResponsive] = useState(false)
   const [extractJobId, setExtractJobId] = useState<string | null>(null)
   const [extractMessage, setExtractMessage] = useState<string | null>(null)
+  const [previewDesign, setPreviewDesign] = useState<DesignCatalogItem | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -817,6 +818,7 @@ function DesignMenu({
     try {
       await onSelect(slug)
       setOpen(false)
+      setPreviewDesign(null)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -880,42 +882,43 @@ function DesignMenu({
   }
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition ${
-          selected
-            ? 'border-action/70 bg-control-hover text-fg'
-            : 'border-line bg-panel text-muted hover:bg-panel-strong hover:text-fg'
-        }`}
-        title={selected ? `Design: ${selected.name}` : 'Design: None'}
-      >
-        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M3 4.5h10M3 8h10M3 11.5h6" strokeLinecap="round" />
-          <path d="M11 10.5l1 1 2-2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span className="max-w-[9rem] truncate">
-          Design: {selected ? selected.name : 'None'}
-        </span>
-      </button>
+    <>
+      <div className="relative" ref={ref}>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition ${
+            selected
+              ? 'border-action/70 bg-control-hover text-fg'
+              : 'border-line bg-panel text-muted hover:bg-panel-strong hover:text-fg'
+          }`}
+          title={selected ? `Design: ${selected.name}` : 'Design: None'}
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M3 4.5h10M3 8h10M3 11.5h6" strokeLinecap="round" />
+            <path d="M11 10.5l1 1 2-2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="max-w-[9rem] truncate">
+            Design: {selected ? selected.name : 'None'}
+          </span>
+        </button>
 
-      {open && (
-        <div className="anim-fade-scale absolute right-0 top-full z-50 mt-1 w-[480px] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl shadow-shadow/30 backdrop-blur-xl">
-          <div className="border-b border-line p-3">
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-0 flex-1">
-                <svg viewBox="0 0 16 16" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="7" cy="7" r="4" />
-                  <path d="M10.5 10.5L14 14" strokeLinecap="round" />
-                </svg>
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search designs"
-                  className="h-8 w-full rounded-lg border border-line bg-surface pl-8 pr-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
-                />
-              </div>
-              {selected && (
+        {open && (
+          <div className="anim-fade-scale absolute right-0 top-full z-50 mt-1 w-[480px] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl shadow-shadow/30 backdrop-blur-xl">
+            <div className="border-b border-line p-3">
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <svg viewBox="0 0 16 16" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="7" cy="7" r="4" />
+                    <path d="M10.5 10.5L14 14" strokeLinecap="round" />
+                  </svg>
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search designs"
+                    className="h-8 w-full rounded-lg border border-line bg-surface pl-8 pr-2 text-[12px] text-fg outline-none placeholder:text-faint focus:border-action"
+                  />
+                </div>
+                {selected && (
                 <button
                   onClick={clearDesign}
                   disabled={clearing || !!busySlug}
@@ -1124,14 +1127,16 @@ function DesignMenu({
                         {design.description}
                       </div>
                     </button>
-                    <a
-                      href={design.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewDesign(design)
+                        setOpen(false)
+                      }}
                       className="rounded-md px-2 py-1 text-[10.5px] text-faint transition hover:bg-panel-strong hover:text-fg"
                     >
-                      View source
-                    </a>
+                      View design
+                    </button>
                   </div>
                 </div>
               )
@@ -1144,6 +1149,144 @@ function DesignMenu({
           </div>
         </div>
       )}
+      </div>
+
+      {previewDesign && (
+        <DesignPreviewDialog
+          design={previewDesign}
+          installing={busySlug === previewDesign.slug}
+          onUse={() => selectDesign(previewDesign.slug)}
+          onClose={() => setPreviewDesign(null)}
+        />
+      )}
+    </>
+  )
+}
+
+type DesignPreviewStatus = 'loading' | 'ready' | 'failed'
+
+function DesignPreviewDialog({
+  design,
+  installing,
+  onUse,
+  onClose
+}: {
+  design: DesignCatalogItem
+  installing: boolean
+  onUse: () => Promise<void>
+  onClose: () => void
+}) {
+  const [status, setStatus] = useState<DesignPreviewStatus>('loading')
+  const titleId = `design-preview-${design.slug}`
+  const ogImageUrl = `https://getdesign.md/api/og/${encodeURIComponent(design.slug)}/design-md`
+
+  useEffect(() => {
+    setStatus('loading')
+    const timeout = window.setTimeout(() => {
+      setStatus((current) => (current === 'loading' ? 'failed' : current))
+    }, 10_000)
+    return () => window.clearTimeout(timeout)
+  }, [design.previewUrl])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-overlay/75 px-4 py-5 backdrop-blur-sm"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="anim-fade-scale flex h-full max-h-[86vh] w-full max-w-[1040px] flex-col overflow-hidden rounded-2xl border border-line bg-surface text-fg shadow-2xl shadow-shadow/40"
+      >
+        <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-line bg-panel px-4">
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="truncate text-[14px] font-semibold text-fg">
+              {design.name}
+            </h2>
+            <div className="truncate text-[11px] text-muted">{design.category}</div>
+          </div>
+          <a
+            href={design.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden rounded-lg border border-line bg-control px-3 py-1.5 text-[11.5px] text-muted transition hover:bg-control-hover hover:text-fg sm:inline-flex"
+          >
+            Open details
+          </a>
+          <button
+            type="button"
+            onClick={onUse}
+            disabled={installing}
+            className="rounded-lg bg-action px-3.5 py-1.5 text-[11.5px] font-medium text-action-fg transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+          >
+            {installing ? 'Installing...' : 'Use design'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close preview"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-control-hover hover:text-fg"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M4 4l8 8M12 4 4 12" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 bg-code">
+          {status === 'failed' ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+              <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl shadow-black/30">
+                <img
+                  src={ogImageUrl}
+                  alt={`${design.name} design preview`}
+                  className="block h-auto w-full"
+                />
+              </div>
+              <div className="max-w-md text-[13px] leading-relaxed text-[rgb(var(--color-on-dark-soft))]">
+                The live preview did not finish loading in this window. The design details page is still available.
+              </div>
+              <a
+                href={design.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-[12px] font-medium text-[rgb(var(--color-on-dark))] transition hover:bg-white/15"
+              >
+                Open details
+              </a>
+            </div>
+          ) : (
+            <div className="relative h-full">
+              <iframe
+                src={design.previewUrl}
+                title={`${design.name} design preview`}
+                sandbox="allow-same-origin"
+                referrerPolicy="no-referrer"
+                onLoad={() => setStatus('ready')}
+                onError={() => setStatus('failed')}
+                className="h-full w-full border-0 bg-white"
+              />
+              {status === 'loading' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-code text-[rgb(var(--color-on-dark-soft))]">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-action" />
+                  <div className="text-[12px]">Loading design preview...</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

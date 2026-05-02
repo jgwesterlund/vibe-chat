@@ -1,6 +1,10 @@
 import type { DesignCatalogItem } from './types'
 
-export const DESIGN_CATALOG: readonly DesignCatalogItem[] = [
+type RawDesignCatalogItem = Omit<DesignCatalogItem, 'previewUrl'>
+
+const GETDESIGN_PREVIEW_BASE = 'https://getdesign.md/design-md'
+
+const RAW_DESIGN_CATALOG: readonly RawDesignCatalogItem[] = [
   {
     slug: 'claude',
     name: 'Claude',
@@ -499,6 +503,11 @@ export const DESIGN_CATALOG: readonly DesignCatalogItem[] = [
     sourceUrl: 'https://getdesign.md/tesla/design-md'
   }
 ]
+
+export const DESIGN_CATALOG: readonly DesignCatalogItem[] = RAW_DESIGN_CATALOG.map((design) => ({
+  ...design,
+  previewUrl: `${GETDESIGN_PREVIEW_BASE}/${design.slug}/preview`
+}))
 
 export const DESIGN_CATEGORIES = Array.from(
   new Set(DESIGN_CATALOG.map((design) => design.category))
