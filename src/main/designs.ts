@@ -165,6 +165,8 @@ export function startDesignExtraction(
   const outputDir = join(customDesignDir(jobId), 'output')
   const cliPath = designlangCliPath()
   const args = [
+    '-e',
+    designlangElectronWrapper(),
     cliPath,
     url,
     '--out',
@@ -475,6 +477,14 @@ function siteNameFromUrl(url: string): string {
 function designlangCliPath(): string {
   const packagePath = require.resolve('designlang/package.json')
   return join(dirname(packagePath), 'bin', 'design-extract.js')
+}
+
+function designlangElectronWrapper(): string {
+  return [
+    "process.defaultApp = true;",
+    "process.execArgv = [];",
+    "import('node:url').then(({ pathToFileURL }) => import(pathToFileURL(process.argv[1]).href));"
+  ].join('')
 }
 
 async function findGeneratedDesignMarkdown(outputDir: string, prefix: string): Promise<string> {
