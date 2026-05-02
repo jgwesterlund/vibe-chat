@@ -39,6 +39,10 @@ import {
   wsWriteFile
 } from './workspace'
 import type {
+  BuildQuestion,
+  BuildQuestionnaireCopy,
+  BuildQuestionnaireTranslationRequest,
+  BuildQuestionnaireTranslationResponse,
   ChatRequest,
   ConversationDesign,
   DesignExtractionRequest,
@@ -59,6 +63,7 @@ import {
   readProviderConfig,
   writeProviderConfig
 } from './providers/config'
+import { detectPromptLanguage } from '../shared/buildQuestionnaire'
 import {
   clearPiAiCredentials,
   coerceOAuthPrompt,
@@ -247,8 +252,20 @@ async function handleChat(req: ChatRequest, channel: string): Promise<void> {
       baseMessages.push({
         role: 'system',
         content: isPiAi
-          ? piAiCodeSystemPrompt(wsPath, href, designContext, designGuardEnabled)
-          : codeSystemPrompt(wsPath, href, designContext, designGuardEnabled)
+          ? piAiCodeSystemPrompt(
+              wsPath,
+              href,
+              designContext,
+              designGuardEnabled,
+              req.buildBrief
+            )
+          : codeSystemPrompt(
+              wsPath,
+              href,
+              designContext,
+              designGuardEnabled,
+              req.buildBrief
+            )
       })
     } else {
       baseMessages.push({
@@ -687,6 +704,205 @@ async function testPiAiProvider(config: PiAiProviderConfig): Promise<{ ok: true 
   }
 }
 
+const QUESTION_TRANSLATION_TIMEOUT_MS = 12000
+const QUESTION_TRANSLATION_MAX_CHARS = 20000
+
+async function translateBuildQuestionnaire(
+  req: BuildQuestionnaireTranslationRequest
+): Promise<BuildQuestionnaireTranslationResponse> {
+  try {
+    const provider = req.provider ?? defaultProviderSelection(req.model)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), QUESTION_TRANSLATION_TIMEOUT_MS)
+    const messages: MLXChatMessage[] = [
+      {
+        role: 'system',
+        content: [
+          'You translate product UI copy for a pre-build questionnaire.',
+          'Return only strict JSON. No markdown, no commentary.',
+          'Translate all human-facing labels into the same language as the user prompt.',
+          'Preserve every question id, kind, option id, array length, and object shape.',
+          'Do not add, remove, reorder, or reinterpret options.',
+          'If the user prompt is already English, still return valid JSON with language "en".'
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          userPrompt: req.prompt,
+          expectedShape: {
+            language: 'BCP-47 language code, for example en, sv, es, fr',
+            ui: req.ui,
+            questions: req.questions
+          }
+        })
+      }
+    ]
+
+    if (provider.id === 'ollama') {
+      await ensureOllamaRunning(provider.model)
+    }
+
+    const piAiApiKey = provider.id === 'pi-ai' ? await resolvePiAiApiKey(provider.config) : undefined
+    let text = ''
+    try {
+      const chunks =
+        provider.id === 'pi-ai'
+          ? streamPiAi({
+              conversationId: `questionnaire_${Date.now()}`,
+              config: provider.config,
+              messages,
+              apiKey: piAiApiKey,
+              signal: controller.signal
+            })
+          : provider.id === 'ollama'
+            ? streamLocalOllama({
+                conversationId: `questionnaire_${Date.now()}`,
+                model: provider.model,
+                messages,
+                signal: controller.signal
+              })
+            : streamLocalMlx({
+                conversationId: `questionnaire_${Date.now()}`,
+                model: provider.model,
+                messages,
+                signal: controller.signal
+              })
+
+      for await (const chunk of chunks) {
+        if (chunk.content) {
+          text += chunk.content
+          if (text.length > QUESTION_TRANSLATION_MAX_CHARS) {
+            throw new Error('Question translation response was too large.')
+          }
+        }
+        if (chunk.done) break
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    const parsed = parseQuestionTranslationJson(text)
+    const questions = validateTranslatedQuestions(req.questions, parsed.questions)
+    const ui = validateTranslatedUi(req.ui, parsed.ui)
+    const language =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().slice(0, 24)
+        : detectPromptLanguage(req.prompt)
+
+    return { language, translated: true, questions, ui }
+  } catch {
+    return {
+      language: detectPromptLanguage(req.prompt),
+      translated: false,
+      questions: req.questions,
+      ui: req.ui
+    }
+  }
+}
+
+function parseQuestionTranslationJson(text: string): Record<string, unknown> {
+  const trimmed = text.trim()
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>
+  } catch {
+    const start = trimmed.indexOf('{')
+    const end = trimmed.lastIndexOf('}')
+    if (start < 0 || end <= start) throw new Error('Question translation did not return JSON.')
+    return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>
+  }
+}
+
+function validateTranslatedQuestions(
+  source: BuildQuestion[],
+  translated: unknown
+): BuildQuestion[] {
+  if (!Array.isArray(translated)) throw new Error('Translated questions must be an array.')
+  if (translated.length !== source.length) throw new Error('Translated question count changed.')
+  const byId = new Map(
+    translated
+      .filter((question): question is Record<string, unknown> => isObject(question))
+      .map((question) => [String(question.id), question])
+  )
+
+  return source.map((sourceQuestion) => {
+    const candidate = byId.get(sourceQuestion.id)
+    if (!candidate) throw new Error(`Missing translated question ${sourceQuestion.id}.`)
+    if (candidate.kind !== sourceQuestion.kind) {
+      throw new Error(`Question kind changed for ${sourceQuestion.id}.`)
+    }
+    const options = validateTranslatedOptions(sourceQuestion, candidate.options)
+    return {
+      id: sourceQuestion.id,
+      kind: sourceQuestion.kind,
+      title: nonEmptyString(candidate.title, sourceQuestion.title),
+      options,
+      otherLabel: optionalString(candidate.otherLabel, sourceQuestion.otherLabel),
+      otherPlaceholder: optionalString(candidate.otherPlaceholder, sourceQuestion.otherPlaceholder)
+    }
+  })
+}
+
+function validateTranslatedOptions(
+  sourceQuestion: BuildQuestion,
+  translated: unknown
+): BuildQuestion['options'] {
+  if (!Array.isArray(translated)) {
+    throw new Error(`Options changed for ${sourceQuestion.id}.`)
+  }
+  if (translated.length !== sourceQuestion.options.length) {
+    throw new Error(`Option count changed for ${sourceQuestion.id}.`)
+  }
+  const byId = new Map(
+    translated
+      .filter((option): option is Record<string, unknown> => isObject(option))
+      .map((option) => [String(option.id), option])
+  )
+
+  return sourceQuestion.options.map((sourceOption) => {
+    const candidate = byId.get(sourceOption.id)
+    if (!candidate) throw new Error(`Missing option ${sourceOption.id}.`)
+    return {
+      id: sourceOption.id,
+      label: nonEmptyString(candidate.label, sourceOption.label),
+      description: optionalString(candidate.description, sourceOption.description)
+    }
+  })
+}
+
+function validateTranslatedUi(
+  source: BuildQuestionnaireCopy,
+  translated: unknown
+): BuildQuestionnaireCopy {
+  if (!isObject(translated)) return source
+  return {
+    title: nonEmptyString(translated.title, source.title),
+    selectOne: nonEmptyString(translated.selectOne, source.selectOne),
+    selectMultiple: nonEmptyString(translated.selectMultiple, source.selectMultiple),
+    otherLabel: nonEmptyString(translated.otherLabel, source.otherLabel),
+    otherPlaceholder: nonEmptyString(translated.otherPlaceholder, source.otherPlaceholder),
+    previous: nonEmptyString(translated.previous, source.previous),
+    next: nonEmptyString(translated.next, source.next),
+    skipAll: nonEmptyString(translated.skipAll, source.skipAll),
+    submit: nonEmptyString(translated.submit, source.submit),
+    translating: nonEmptyString(translated.translating, source.translating),
+    fallbackNotice: nonEmptyString(translated.fallbackNotice, source.fallbackNotice)
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function nonEmptyString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function optionalString(value: unknown, fallback?: string): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return fallback
+}
+
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.ammaar.vibechat')
   nativeTheme.themeSource = 'dark'
@@ -830,6 +1046,13 @@ app.whenReady().then(async () => {
       }
     })
   })
+
+  ipcMain.handle(
+    'questionnaire:translate',
+    async (_e, request: BuildQuestionnaireTranslationRequest) => {
+      return translateBuildQuestionnaire(request)
+    }
+  )
 
   ipcMain.handle('designs:extract:cancel', async (_e, jobId: string) => {
     return { cancelled: cancelDesignExtraction(jobId) }

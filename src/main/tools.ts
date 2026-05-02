@@ -8,7 +8,7 @@ import {
   listTree,
   previewUrl
 } from './workspace'
-import type { ConversationDesign } from '@shared/types'
+import type { BuildBrief, ConversationDesign } from '@shared/types'
 
 export interface ToolContext {
   conversationId: string
@@ -464,11 +464,40 @@ export interface CodeDesignContext {
   markdown: string
 }
 
+function formatBuildBrief(brief: BuildBrief): string {
+  const lines = [
+    `Original prompt: ${brief.originalPrompt}`,
+    `Prompt language: ${brief.language}`,
+    `Question category: ${brief.category}`,
+    `Skipped all questions: ${brief.skipped ? 'yes' : 'no'}`
+  ]
+
+  if (!brief.skipped) {
+    for (const answer of brief.answers) {
+      const question = brief.questions.find((q) => q.id === answer.questionId)
+      if (!question) continue
+      const selected = answer.optionIds
+        .map((optionId) => question.options.find((option) => option.id === optionId)?.label)
+        .filter((label): label is string => !!label)
+      const parts = [
+        ...selected,
+        answer.otherText ? `${question.otherLabel ?? 'Other'}: ${answer.otherText}` : ''
+      ].filter(Boolean)
+      if (parts.length) {
+        lines.push(`- ${question.title}: ${parts.join(', ')}`)
+      }
+    }
+  }
+
+  return lines.join('\n')
+}
+
 export function codeSystemPrompt(
   workspacePath: string,
   previewHref: string,
   designContext?: CodeDesignContext | null,
-  designGuardEnabled = true
+  designGuardEnabled = true,
+  buildBrief?: BuildBrief | null
 ): string {
   const now = new Date().toISOString()
   const day = new Date().toLocaleDateString('en-US', { weekday: 'long' })
@@ -482,6 +511,12 @@ export function codeSystemPrompt(
     '- Real-feeling copy, not lorem ipsum. Invent brand names and details.',
     '- Make it actually work: click handlers wired, animations smooth, forms usable.',
     '- Fetch real images only when asked; otherwise use CSS/SVG for illustrations.',
+    '',
+    'DIRECTION PRECEDENCE',
+    '1. The current user prompt is highest priority.',
+    '2. The build questionnaire brief guides design and product choices when the prompt is underspecified.',
+    '3. A selected design reference guides visual language after the brief.',
+    '4. Design quality guard defaults fill in the remaining gaps.',
     ''
   ]
 
@@ -490,6 +525,18 @@ export function codeSystemPrompt(
       'DESIGN QUALITY GUARD — DEFAULT ON',
       'Avoid obvious AI-generated UI tells unless the user explicitly asks for them: purple/cyan gradient palettes, gradient text, glow-heavy dark mode, nested cards, side accent borders, icon tiles stacked above headings, everything centered, bounce/elastic motion, pure black/white canvases, and flat type hierarchy.',
       'Use distinctive typography, intentional color, responsive spacing, stable layouts, accessible contrast, and restrained motion. If a selected DESIGN.md or explicit user request conflicts with this guard, preserve the user direction while keeping the rest of the UI clean.',
+      ''
+    )
+  }
+
+  if (buildBrief) {
+    lines.push(
+      'BUILD QUESTIONNAIRE BRIEF',
+      'The user answered a pre-build questionnaire before this Build conversation started.',
+      'Use it as hidden planning context for visual style, layout, audience, CTA, sections, and interaction expectations.',
+      'Do not mention the questionnaire unless the user asks. If the brief conflicts with the current user prompt, follow the current user prompt.',
+      '',
+      formatBuildBrief(buildBrief),
       ''
     )
   }
@@ -577,13 +624,15 @@ export function piAiCodeSystemPrompt(
   workspacePath: string,
   previewHref: string,
   designContext?: CodeDesignContext | null,
-  designGuardEnabled = true
+  designGuardEnabled = true,
+  buildBrief?: BuildBrief | null
 ): string {
   const localPrompt = codeSystemPrompt(
     workspacePath,
     previewHref,
     designContext,
-    designGuardEnabled
+    designGuardEnabled,
+    buildBrief
   )
   return localPrompt.replace(
     "You are Vibe, a local coding agent running entirely on the user's Mac.",

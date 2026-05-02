@@ -6,6 +6,12 @@ import {
   runtimeModelName,
   type AgentMode,
   type AppProviderConfig,
+  type BuildBrief,
+  type BuildQuestion,
+  type BuildQuestionAnswer,
+  type BuildQuestionCategory,
+  type BuildQuestionnaireCopy,
+  type ChatProviderSelection,
   type ChatMessage,
   type ConversationDesign,
   type DesignCatalogItem,
@@ -19,8 +25,17 @@ import {
   type ToolCall,
   type StreamChunk
 } from '@shared/types'
+import {
+  BUILD_QUESTIONNAIRE_COPY,
+  createBuildBrief,
+  detectBuildQuestionCategory,
+  detectPromptLanguage,
+  getBuildQuestionTemplate,
+  shouldTriggerBuildQuestions
+} from '@shared/buildQuestionnaire'
 import type { ThemeMode } from '../theme'
 import BrandMark from './BrandMark'
+import BuildQuestionnaire from './BuildQuestionnaire'
 import Composer from './Composer'
 import Message from './Message'
 import Sidebar from './Sidebar'
@@ -44,6 +59,17 @@ interface Conversation {
   canvasOpen?: boolean
   design?: ConversationDesign
   designGuardEnabled?: boolean
+  buildBrief?: BuildBrief
+}
+
+interface BuildQuestionnaireSession {
+  prompt: string
+  category: BuildQuestionCategory
+  language: string
+  questions: BuildQuestion[]
+  ui: BuildQuestionnaireCopy
+  translated: boolean
+  loading: boolean
 }
 
 const STORAGE_KEY = 'vibe-chat:conversations:v2'
@@ -101,6 +127,16 @@ function providerDisplayLabel(config: AppProviderConfig): string {
   return 'local'
 }
 
+function providerSelection(config: AppProviderConfig, model: string): ChatProviderSelection {
+  if (config.selectedProvider === 'pi-ai') {
+    return { id: 'pi-ai', config: config.piAi }
+  }
+  if (config.selectedProvider === 'ollama') {
+    return { id: 'ollama', model: config.ollamaModel }
+  }
+  return { id: 'local-mlx', model }
+}
+
 export default function Chat({
   model,
   providerConfig,
@@ -115,6 +151,7 @@ export default function Chat({
   })
   const [activeId, setActiveId] = useState<string>(() => conversations[0].id)
   const [streaming, setStreaming] = useState(false)
+  const [questionnaire, setQuestionnaire] = useState<BuildQuestionnaireSession | null>(null)
   const streamRef = useRef<{ abort: boolean }>({ abort: false })
 
   const activeConversation = useMemo(
@@ -167,7 +204,89 @@ export default function Chat({
   async function handleSend(input: string): Promise<void> {
     if (!input.trim() || streaming) return
 
-    const conv = conversations.find((c) => c.id === activeId)!
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
+
+    if (
+      conv.mode === 'code' &&
+      conv.messages.length === 0 &&
+      !conv.buildBrief &&
+      shouldTriggerBuildQuestions(input)
+    ) {
+      await beginBuildQuestionnaire(input)
+      return
+    }
+
+    await sendPrompt(input)
+  }
+
+  async function beginBuildQuestionnaire(input: string): Promise<void> {
+    const category = detectBuildQuestionCategory(input)
+    const questions = getBuildQuestionTemplate(category)
+    const language = detectPromptLanguage(input)
+    const initialSession: BuildQuestionnaireSession = {
+      prompt: input,
+      category,
+      language,
+      questions,
+      ui: BUILD_QUESTIONNAIRE_COPY,
+      translated: false,
+      loading: true
+    }
+
+    setQuestionnaire(initialSession)
+
+    try {
+      const translated = await window.api.translateBuildQuestions({
+        prompt: input,
+        model,
+        provider: providerSelection(providerConfig, model),
+        category,
+        questions,
+        ui: BUILD_QUESTIONNAIRE_COPY
+      })
+      setQuestionnaire((current) =>
+        current?.prompt === input
+          ? {
+              ...current,
+              language: translated.language,
+              questions: translated.questions,
+              ui: translated.ui,
+              translated: translated.translated,
+              loading: false
+            }
+          : current
+      )
+    } catch {
+      setQuestionnaire((current) =>
+        current?.prompt === input
+          ? { ...current, translated: false, loading: false }
+          : current
+      )
+    }
+  }
+
+  function finishBuildQuestionnaire(skipped: boolean, answers: BuildQuestionAnswer[]): void {
+    if (!questionnaire) return
+    const brief = createBuildBrief({
+      originalPrompt: questionnaire.prompt,
+      language: questionnaire.language,
+      category: questionnaire.category,
+      skipped,
+      questions: questionnaire.questions,
+      answers
+    })
+    const prompt = questionnaire.prompt
+    setQuestionnaire(null)
+    updateActive((c) => ({ ...c, buildBrief: brief }))
+    void sendPrompt(prompt, brief)
+  }
+
+  async function sendPrompt(input: string, buildBriefOverride?: BuildBrief): Promise<void> {
+    if (!input.trim() || streaming) return
+
+    const conv = conversations.find((c) => c.id === activeId)
+    if (!conv) return
 
     const userMsg: ChatMessage = {
       id: newId('m'),
@@ -222,6 +341,8 @@ export default function Chat({
           enableTools: true,
           mode: conv.mode,
           design: conv.mode === 'code' ? conv.design : undefined,
+          buildBrief:
+            conv.mode === 'code' ? (buildBriefOverride ?? conv.buildBrief) : undefined,
           designGuardEnabled:
             conv.mode === 'code' ? conv.designGuardEnabled !== false : undefined
         },
@@ -365,7 +486,7 @@ export default function Chat({
             onSend={handleSend}
             onStop={handleStop}
             streaming={streaming}
-            disabled={false}
+            disabled={!!questionnaire}
             model={model}
             placeholder={
               activeConversation.mode === 'code'
@@ -386,6 +507,16 @@ export default function Chat({
           />
         )}
       </div>
+      {questionnaire && (
+        <BuildQuestionnaire
+          questions={questionnaire.questions}
+          ui={questionnaire.ui}
+          loading={questionnaire.loading}
+          showFallbackNotice={!questionnaire.translated && questionnaire.language !== 'en'}
+          onSubmit={(answers) => finishBuildQuestionnaire(false, answers)}
+          onSkip={() => finishBuildQuestionnaire(true, [])}
+        />
+      )}
     </div>
   )
 }
